@@ -7,50 +7,60 @@ import (
 	"math/rand"
 	"net"
 	"os"
-	"regexp"
+	"os/user"
 	"strings"
 	"time"
+	"regexp"
 
 	"github.com/mgutz/ansi"
+	"github.com/GeertJohan/go.linenoise"
 	"github.com/pmylund/go-cache"
 )
 
 var (
 	triAct     map[string]string
 	hiLi     map[string]bool
-	foundExits map[int]string
-	killNpcs   []string
-	unwantedNpcsInRoom []string
 )
 
-func tickr(conn net.Conn) {
-    ticker := time.NewTicker(time.Minute * time.Duration(random(4,8)))
-    go func() {
-        for t := range ticker.C {
-            wlog("Tick at", t)
-            fmt.Fprintf(conn, "look\n")
-        }
-    }()
+func exists(path string) (bool, error) {
+    _, err := os.Stat(path)
+    if err == nil { return true, nil }
+    if os.IsNotExist(err) { return false, nil }
+    return true, err
 }
 
-func fightingTimer(conn net.Conn, cdb *cache.Cache) {
-	timer := time.NewTimer(time.Second * time.Duration(random(40, 70)))
-    go func() {
-    	fmt.Println(ansi.Color("Started fighting timer", "blue+b"))
-        <- timer.C
-        cdb.Set("fighting", 0, cache.NoExpiration)
-        cdb.Set("haveAttacked", 0, cache.NoExpiration)
-        fmt.Fprintf(conn, "ba\n")
-        fmt.Fprintf(conn, "look\n")
-    }()
+func returnRand() (int) {
+	randMap := make(map[int]int)
+	for i := 0; i < 30; i++ {
+		randMap[i] = random(60, 480)
+	}
+	return randMap[rand.Intn(len(randMap))]
+}
+
+func goDiscInit() {
+	usr, err := user.Current()
+    if err != nil {
+        log.Fatal( err )
+    }
+    goDiscCfgDir := usr.HomeDir + "/.config/godisc"
+    os.Setenv("goDiscCfgDir", goDiscCfgDir + "/")
+	cfgDirExists, err := exists(goDiscCfgDir)
+	if err != nil {
+		panic(err.Error())
+	}
+	if cfgDirExists == false {
+		err := os.Mkdir(goDiscCfgDir,0770)
+		if err != nil {
+			panic(err.Error())
+		}
+	}
 }
 
 func main() {
-	rand.Seed( time.Now().UTC().UnixNano())
 	cdb := cache.New(5*time.Minute, 30*time.Second)
-	cdb.Set("amove", 0, cache.NoExpiration)
-	cdb.Set("fighting", 0, cache.NoExpiration)
-    cdb.Set("haveAttacked", 0, cache.NoExpiration)
+	cdb.Set("runIdle", 0, cache.DefaultExpiration)
+	goDiscInit()
+	rand.Seed( time.Now().UTC().UnixNano())
 	conn, err := net.Dial("tcp", "discworld.starturtle.net:4242")
 	if err != nil {
 		fmt.Println(err)
@@ -58,106 +68,43 @@ func main() {
 	}
 	connbuf := bufio.NewReader(conn)
 	msgchan := make(chan string)
+	dir, found := cdb.Get("runIdle")
+	if found && dir.(int) == 1 {
+		ticker := time.NewTicker(time.Duration(returnRand()) * time.Second)
+		quit := make(chan struct{})
+		go func() {
+		    for {
+		       select {
+		        case <- ticker.C:
+		            fmt.Fprintf(conn, "hide\n")
+		            fmt.Fprintf(conn, "unhide\n")
+		            fmt.Fprintf(conn, "drop anaconda\n")
+		            fmt.Fprintf(conn, "case anaconda\n")
+		            fmt.Fprintf(conn, "peek anaconda\n")
+		            fmt.Fprintf(conn, "rifle purse of anaconda\n")
+		            fmt.Fprintf(conn, "palm dagger from component pouch\n")
+		            fmt.Fprintf(conn, "slip dagger to component pouch\n")
+		            fmt.Fprintf(conn, "get anaconda\n")
+					fmt.Fprintf(conn, "look\n")
+		        case <- quit:
+		            ticker.Stop()
+		            return
+		        }
+		    }
+		 }()
+	}
+
 	go printMessages(msgchan, conn)
 	go readKeyboardInput(conn, cdb)
-	go tickr(conn)
 	for {
-		var attacked bool
-		var wantedNpcsString string
 		str, err := connbuf.ReadString('\n')
 		if err != nil {
 			break
 		}
 		str = triggerOn(str, conn)
 		str = highLight(str)
-		// if strings.Contains(str, "obvious exit") == true {
-			wlog("Contains it", str)
-			fStr, foundExits := handleStream(str, conn)
-			msgchan <- fStr
-			toWalk := doWalking(foundExits, cdb, conn)
-			dir, _ := cdb.Get("amove")
-			if toWalk != "none" && dir.(int) == 1{
-				wlog("Searching", str)
-				re3, _ := regexp.Compile("(.+) (is|are) standing here")
-				result3 := re3.FindStringSubmatch(fStr)
-				if len(result3) > 0 {
-					attacked, wantedNpcsString = hunting(result3[1], conn, cdb)
-				} else {
-					wlog("Found nothing in", fStr)
-				}
-				wlog("Attacked", attacked)
-				wlog("wantedNpcsString", wantedNpcsString)
-				fdir, _ := cdb.Get("fighting")
-				if attacked == true || fdir.(int) == 1 {
-						cdb.Set("fighting", 1, cache.NoExpiration)
-						adir, afound := cdb.Get("haveAttacked")
-						if !afound || adir.(int) == 0 {
-							cdb.Set("haveAttacked", 1, cache.NoExpiration)
-							fmt.Fprintf(conn, "k " + wantedNpcsString + "\n")
-							go fightingTimer(conn, cdb)
-						}
-					} else {
-						walk(toWalk, conn, cdb, 0)
-					}
-			}
-			wlog(toWalk)
-		// } else {
-		// 	msgchan <- str
-		// }
+		msgchan <- str
 	}
-}
-
-func cameFrom(walked string) (cameFrom string) {
-	wlog(ansi.Color(walked, "green+b"))
-	switch walked {
-	case "north":
-		cameFrom = "south"
-	case "northeast":
-		cameFrom = "southwest"
-	case "northwest":
-		cameFrom = "southeast"
-	case "south":
-		cameFrom = "north"
-	case "southeast":
-		cameFrom = "northwest"
-	case "southwest":
-		cameFrom = "northeast"
-	case "east":
-		cameFrom = "west"
-	case "west":
-		cameFrom = "east"
-	default:
-		cameFrom = "backwards"
-	}
-	return
-}
-
-func removeCameFrom(came string, foundExits map[int]string) (map[int]string) {
-	counter := 0
-	newFoundExits := make(map[int]string)
-	for _,v := range foundExits {
-		if v != came {
-			newFoundExits[counter] = v
-			counter++
-		}
-	}
-	return newFoundExits
-}
-
-func walk(toWalk string, conn net.Conn, cdb *cache.Cache, killWindow int) {
-	go func() {
-		fdir, _ := cdb.Get("fighting")
-		hadir, _ := cdb.Get("haveAttacked")
-			if fdir.(int) == 0 && hadir.(int) == 0 {
-			if killWindow == 0 {
-					delaySecond(random(2,6))
-				} else {
-					delaySecond(random(60,90))
-				}
-				cdb.Set("lastWalked", toWalk, cache.NoExpiration)
-				fmt.Fprintf(conn, toWalk+"\n")
-		}
-	}()
 }
 
 func triggerOn(str string, conn net.Conn) string {
@@ -178,32 +125,25 @@ func triggerOn(str string, conn net.Conn) string {
 }
 
 func highLight(str string) string {
-	hiLi = make(map[string]bool)
-
-	hiLi["bodyguards"] = true
-	hiLi["bodyguard"] = true
-	hiLi["merchants"] = true
-	hiLi["merchant"] = true
-	hiLi["dealers"] = true
-	hiLi["dealer"] = true
-	hiLi["traders"] = true
-	hiLi["trader"] = true
-	hiLi["noblemen"] = true
-	hiLi["nobleman"] = true
-	hiLi["samurais"] = true
-	hiLi["samurai"] = true
-	hiLi["warriors"] = true
-	hiLi["warrior"] = true
-	hiLi["Imperial Guards"] = true
-	hiLi["Imperial Guard"] = true
-	hiLi["judges"] = true
-	hiLi["judge"] = true
-
-	for k, v := range hiLi {
-		if strings.Contains(str, k) == true && v == true {
-			str = strings.Replace(str, k, ansi.Color(k, "red+b"), -1)
-			wlog("Found", ansi.Color(k, "red+b"))
+	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
+	if highLightListExists == true {
+		file, err := os.Open("highlight.list")
+		if err != nil {
+		    log.Fatal(err)
 		}
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			if strings.Contains(str, scanner.Text()) {
+				str = strings.Replace(str, scanner.Text(), ansi.Color(scanner.Text(), "red+b"), -1)
+			}
+		}
+		if err := scanner.Err(); err != nil {
+		    log.Fatal(err)
+		}
+	} else {
+		wlog("Could not find", os.Getenv("goDiscCfgDir") + "highlight.list")
 	}
 	return str
 }
@@ -216,81 +156,6 @@ func random(min, max int) int {
 	return min + rand.Intn(max-min)
 }
 
-func calcNumExits(r string) int {
-	switch r {
-	case "one":
-		return 1
-	case "two":
-		return 2
-	case "three":
-		return 3
-	case "four":
-		return 4
-	case "five":
-		return 5
-	case "six":
-		return 6
-	case "seven":
-		return 7
-	case "eight":
-		return 8
-	case "nine":
-		return 9
-	case "ten":
-		return 10
-	default:
-		return 999
-	}
-}
-
-func checkResetWalk() bool {
-	var chance map[int]bool
-	chance = make(map[int]bool)
-	chance[0] = false
-	chance[1] = false
-	chance[2] = false
-	chance[3] = false
-	chance[4] = false
-	chance[5] = false
-	chance[6] = false
-	chance[7] = false
-	chance[8] = false
-	chance[9] = false
-	if len(chance) < 1 {
-		return false
-	}
-	return chance[rand.Intn(len(chance))]
-}
-
-func doWalking(foundExits map[int]string, cdb *cache.Cache, c net.Conn) (string) {
-	wlog(len(foundExits))
-	var lastWalked string
-	var toWalk string
-	dir, found := cdb.Get("lastWalked")
-	if found {
-		lastWalked = dir.(string)
-	} else {
-		lastWalked = "none"
-	}
-	wlog(lastWalked)
-	came := cameFrom(lastWalked)
-	foundExits = removeCameFrom(came, foundExits)
-	wlog("Removed", came)
-	wlog("Found:", foundExits)
-
-	lWCheck := mapSearch(lastWalked, foundExits)
-	if lWCheck == true {
-		toWalk = lastWalked
-	} else {
-		if len(foundExits) > 0 {
-			toWalk = foundExits[rand.Intn(len(foundExits))]
-		} else {
-			wlog("Could not find any exits!", foundExits)
-		}
-	}
-	return toWalk
-}
-
 func mapSearch(s string, a map[int]string) (exists bool) {
 	exists = false
 	for _, v := range a {
@@ -300,55 +165,6 @@ func mapSearch(s string, a map[int]string) (exists bool) {
 		}
 	}
 	return
-}
-
-func hunting(resultString string, c net.Conn, cdb *cache.Cache) (bool, string) {
-	attacked := false
-	killNpcs := []string{}
-	killNpcs = append(killNpcs, "child")
-	killNpcs = append(killNpcs, "merchant")
-	killNpcs = append(killNpcs, "trader")
-	killNpcs = append(killNpcs, "farmer")
-	// killNpcs = append(killNpcs, "woman")
-	// killNpcs = append(killNpcs, "judge")
-	// killNpcs = append(killNpcs, "dressmaker")
-	// killNpcs = append(killNpcs, "rich woman")
-	// killNpcs = append(killNpcs, "warrior")
-
-	unwantedNpcsInRoom := []string{}
-	unwantedNpcsInRoom = append(unwantedNpcsInRoom, "Royal Guard")
-	unwantedNpcsInRoom = append(unwantedNpcsInRoom, "brawler")
-	unwantedNpcsInRoom = append(unwantedNpcsInRoom, "brawler")
-	foundUnwantedNpcInRoom := false
-	var wantedNpcsString string
-
-	wantedNpcs := []string{}
-
-	foundNpcs := cleanNpcString(resultString)
-	// foundNpcsArray := strings.Split(foundNpcs, ", ")
-
-	for _, un := range unwantedNpcsInRoom {
-		// wlog("Looking for unwanted npcs in room")
-		if strings.Contains(foundNpcs, un) == true {
-			foundUnwantedNpcInRoom = true
-		}
-	}
-
-	for _, sv := range killNpcs {
-		wlog("Looking for", sv, "in", foundNpcs)
-		// wlog(strings.Contains(foundNpcs, sv))
-		if strings.Contains(foundNpcs, sv) == true {
-			wantedNpcs = append(wantedNpcs, sv)
-		}
-	}
-	// wlog("I found", foundNpcsArray)
-	// wlog("I wanna kill", wantedNpcs)
-	// wlog("Did i find unwanted npcs in room?", foundUnwantedNpcInRoom)
-	if len(wantedNpcs) > 0 && foundUnwantedNpcInRoom == false {
-		wantedNpcsString = strings.Join(wantedNpcs, "&")
-		attacked = true
-	}
-	return attacked, wantedNpcsString
 }
 
 func cleanNpcString(s string) string {
@@ -391,65 +207,195 @@ func cleanNpcString(s string) string {
 	return foundNpcs
 }
 
-func handleStream(str string, c net.Conn) (fStr string, foundExits map[int]string) {
-
-	var numExits int
-	foundExits = make(map[int]string)
-
-	// Find the string representation of how many exits are in the room
-	re1, _ := regexp.Compile("There (is|are) [a-z]+ obvious (exit|exits): (.+).")
-	result := re1.FindStringSubmatch(str)
-	if len(result) > 0 {
-		numExits = calcNumExits(result[2])
-		wlog("Number of exits found:", numExits)
-		wlog(result[3])
-		myStringArray := strings.Split(strings.Replace(strings.Replace(strings.Replace(result[3], ".", "", -1), " and ", ", ", -1), " ", "", -1), ",")
-		mCount := 0
-		for _, v := range myStringArray {
-			subre, _ := regexp.Compile("(^\\w+)")
-			vRes := subre.FindStringSubmatch(v)
-			rV := vRes[1]
-			b := isAcceptedExit(rV)
-			if b == true {
-				foundExits[mCount] = rV
-				mCount++
-			} else {
-				wlog("This is not acceptable:", rV)
-			}
+func findAlias(str []string) string {
+	aliasListExists, _ := exists(os.Getenv("goDiscCfgDir") + "alias.list")
+	if aliasListExists == true {
+		file, err := os.Open("alias.list")
+		if err != nil {
+		    log.Fatal(err)
 		}
-		wlog("Acceptable exits found:", foundExits)
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			splitScan := strings.Split(scanner.Text(), "->")
+		    if len(splitScan) > 1 {
+		    	for _,v := range str {
+			    	if splitScan[0] == v {
+			    		return splitScan[1]
+			    	}
+		    	}
+		    }
+		}
+
+		if err := scanner.Err(); err != nil {
+		    log.Fatal(err)
+		}
 	}
-	fStr = str
-	return
+	return "none"
 }
 
 func readKeyboardInput(c net.Conn, cdb *cache.Cache) {
-	scanner := bufio.NewScanner(os.Stdin)
-	for scanner.Scan() {
-		inputText := scanner.Text()
-		switch inputText {
-		case "amove":
-			cdb.Set("amove", 1, cache.NoExpiration)
-			fmt.Println(ansi.Color("Activated move", "red+b"))
-		case "demove":
-			cdb.Set("amove", 0, cache.NoExpiration)
-			fmt.Println(ansi.Color("Deactivated move", "red+b"))
-		default:
-			if strings.Contains(inputText, "|") {
-				splitText := strings.Split(inputText, "|")
+	for {
+		str, err := linenoise.Line("")
+		wlog(str)
+		if err != nil {
+			if err == linenoise.KillSignalError {
+				quit()
+			}
+			fmt.Printf("Unexpected error: %s\n", err)
+			quit()
+		}
+
+		inputText := strings.Fields(str)
+		cmd := findAlias(inputText)
+		if cmd == "none" {
+			joinText := strings.Join(inputText, " ")
+			switch joinText {
+			case "idleon":
+				fmt.Println(ansi.Color("Activating idle", "red+b"))
+				cdb.Set("runIdle", 1, cache.DefaultExpiration)
+				linenoise.AddHistory("idleon")
+				fmt.Fprintf(c, "look\n")
+			case "idleoff":
+				fmt.Println(ansi.Color("Deactivating idle", "red+b"))
+				cdb.Set("runIdle", 0, cache.DefaultExpiration)
+				linenoise.AddHistory("idleoff")
+				fmt.Fprintf(c, "look\n")
+			default:
+				if strings.Contains(joinText, "|") {
+					splitText := strings.Split(joinText, "|")
+					for _,sv := range splitText {
+						fmt.Fprintf(c, sv+"\n")
+					}
+					linenoise.AddHistory(joinText)
+				} else {
+					fmt.Fprintf(c, joinText+"\n")
+					linenoise.AddHistory(joinText)
+				}
+			}
+		} else {
+			joinText := strings.Join(inputText, " ")
+			wlog("[ CMD ]:", joinText)
+			if strings.Contains(cmd, "|") {
+				splitText := strings.Split(cmd, "|")
 				for _,v := range splitText {
+					wlog("Split cmd", v)
 					fmt.Fprintf(c, v+"\n")
+					linenoise.AddHistory(joinText)
 				}
 			} else {
-				fmt.Fprintf(c, scanner.Text()+"\n")
+				fmt.Fprintf(c, cmd+"\n")
+				linenoise.AddHistory(joinText)
 			}
 		}
+
 	}
 }
 
+func quit() {
+	os.Exit(0)
+}
+
+func regComp(str string, reg string) []string {
+	r, _ := regexp.Compile(reg)
+	res := r.FindStringSubmatch(str)
+	return res
+}
+
+func tellSaver(str string) bool {
+	res := regComp(str, "(You tell|You ask|You exclaim) (.+):(.+)")
+	if len(res) > 1 {
+		var stringToWrite string
+		t := time.Now()
+		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s : %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir") + "tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+		    wlog(err.Error)
+		}
+
+		defer f.Close()
+
+		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		    wlog(err.Error)
+		}
+		return true
+	}
+	res2 := regComp(str, "(.+) (tell|ask|exclaim|tells|asks|exclaims) (.+):(.+)")
+	if len(res2) > 1 {
+		var stringToWrite string
+		t := time.Now()
+		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s : %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(strings.Replace(strings.TrimSpace(res2[1]), ">", "", -1), "blue+b"), ansi.Color(res2[3], "yellow+b"), ansi.Color(res2[4], "green+b"))
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir") + "tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+		    wlog(err.Error)
+		}
+
+		defer f.Close()
+
+		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		    wlog(err.Error)
+		}
+		return true
+	}
+	return false
+}
+
+func chatSaver(str string) bool {
+	res := regComp(str, "\\((\\D+)\\) (.+)wisps(.+)")
+	if len(res) > 1 {
+		var stringToWrite string
+		t := time.Now()
+		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s : %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir") + "talkerChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+		    wlog(err.Error)
+		}
+
+		defer f.Close()
+
+		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		    wlog(err.Error)
+		}
+		return true
+	}
+	return false
+}
+
+func groupSaver(str string) bool {
+	res3 := regComp(str, "\\[(.+)\\]\\s(.+) (.+)")
+	if len(res3) > 2 {
+		var stringToWrite string
+		t := time.Now()
+		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] [%s] %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res3[1], "blue+b"), ansi.Color(res3[2], "magenta+b"), ansi.Color(res3[3], "cyan+b"))
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir") + "tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+		    wlog(err.Error)
+		}
+
+		defer f.Close()
+
+		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		    wlog(err.Error)
+		}
+		return true
+	} else {
+		wlog(res3)
+		wlog(len(res3))
+	}
+	return false
+}
+
+
 func printMessages(msgchan <-chan string, c net.Conn) {
+	fmt.Printf("\n")
 	for msg := range msgchan {
-		fmt.Printf("%s", msg)
+		ignoreChatPrint := chatSaver(msg)
+		ignoreTellPrint := tellSaver(msg)
+		ignoreGroupPrint := groupSaver(msg)
+		if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
+			fmt.Printf("%s", msg)
+		}
 	}
 }
 
@@ -479,7 +425,7 @@ func isAcceptedExit(exit string) (accepted bool) {
 }
 
 func wlog(s ...interface{}) {
-	f, err := os.OpenFile("godisc.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	f, err := os.OpenFile(os.Getenv("goDiscCfgDir") + "godisc.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Println("error opening file: %v", err.Error())
 	}
