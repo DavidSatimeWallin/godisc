@@ -453,9 +453,16 @@ func groupSaver(str string) bool {
 func printMessages(msgchan <-chan string, c net.Conn) {
 	fmt.Printf("\n")
 	for msg := range msgchan {
+
+		// Trim whitespaces from msg before doing actions on it.
+		msg = strings.TrimSpace(msg)
+
+		// Parse msg to see if it should be written to a file instead of being printed.
 		ignoreChatPrint := chatSaver(msg)
 		ignoreTellPrint := tellSaver(msg)
 		ignoreGroupPrint := groupSaver(msg)
+
+		// If the three Print filters above are all false print msg to screen.
 		if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
 			if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
 				msg = strings.Replace(msg, "There is a sudden white flash.  Your magical shield has broken.", ansi.Color("There is a sudden white flash.  Your magical shield has broken.", "red+bB"), -1)
