@@ -30,8 +30,10 @@ const (
 )
 
 var (
-	connectHost = kingpin.Arg("host", "The IP/Domain to connect to.").Required().String()
-	connectPort = kingpin.Arg("port", "Port to connect to.").Default(defaultConnectionPort).String()
+	app         = kingpin.New("chat", "A command-line chat application.")
+	connectHost = app.Arg("host", "The IP/Domain to connect to.").Required().String()
+	connectPort = app.Arg("port", "Port to connect to.").Default(defaultConnectionPort).String()
+	debug       = app.Flag("debug", "Set to true to see debug information.").Bool()
 )
 
 func main() {
@@ -40,7 +42,7 @@ func main() {
 	kingpin.Version(goDiscVersion)
 
 	// Parsing kingpin arguments.
-	kingpin.Parse()
+	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	// Creating the channel on which the connection will post.
 	msgchan := make(chan string)
@@ -482,4 +484,9 @@ func wlog(s ...interface{}) {
 
 	log.SetOutput(f)
 	log.Println(s)
+	if *debug == true {
+		for _, v := range s {
+			fmt.Println(ansi.Color(fmt.Sprintf("%s", v), "white+B:red+h"))
+		}
+	}
 }
