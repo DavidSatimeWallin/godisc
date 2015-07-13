@@ -1,6 +1,8 @@
 # What is godisc
 godisc is a MUD client used to play the [Discworld MUD](http://discworld.starturtle.net) game. It is still very much in early, possibly unstable, release. godisc is a cli tool written in go.
 
+![godisc mud client in tmux](/godisc.png?raw=true "godisc mud client in tmux")
+
 # How to use godisc
 godisc is best used together with [tmux](https://tmux.github.io/).
 * Start a tmux session
