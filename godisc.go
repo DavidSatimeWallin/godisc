@@ -423,10 +423,9 @@ func groupSaver(str string) bool {
 			wlog(err.Error)
 		}
 		return true
-	} else {
-		wlog(res3)
-		wlog(len(res3))
 	}
+	wlog(res3)
+	wlog(len(res3))
 	return false
 }
 
