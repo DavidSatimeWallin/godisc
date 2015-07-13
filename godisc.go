@@ -455,20 +455,24 @@ func groupSaver(str string) bool {
 func printMessages(msgchan <-chan string, c net.Conn) {
 	fmt.Printf("\n")
 	for msg := range msgchan {
-
-		// Trim whitespaces from msg before doing actions on it.
-		msg = strings.TrimSpace(msg)
-
-		// Parse msg to see if it should be written to a file instead of being printed.
-		ignoreChatPrint := chatSaver(msg)
-		ignoreTellPrint := tellSaver(msg)
-		ignoreGroupPrint := groupSaver(msg)
-
-		// If the three Print filters above are all false print msg to screen.
-		if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
-			if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
-				msg = strings.Replace(msg, "There is a sudden white flash.  Your magical shield has broken.", ansi.Color("There is a sudden white flash.  Your magical shield has broken.", "red+bB"), -1)
+		if len(msg) > 1 {
+			if *debug == true {
+				wlog(ansi.Color(fmt.Sprintf("%s", msg), "white+B:red+h"))
 			}
+
+			// Parse msg to see if it should be written to a file instead of being printed.
+			ignoreChatPrint := chatSaver(msg)
+			ignoreTellPrint := tellSaver(msg)
+			ignoreGroupPrint := groupSaver(msg)
+
+			// If the three Print filters above are all false print msg to screen.
+			if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
+				if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
+					msg = strings.Replace(msg, "There is a sudden white flash.  Your magical shield has broken.", ansi.Color("There is a sudden white flash.  Your magical shield has broken.", "red+bB"), -1)
+				}
+				fmt.Printf("%s", msg)
+			}
+		} else {
 			fmt.Printf("%s", msg)
 		}
 	}
@@ -484,9 +488,4 @@ func wlog(s ...interface{}) {
 
 	log.SetOutput(f)
 	log.Println(s)
-	if *debug == true {
-		for _, v := range s {
-			fmt.Println(ansi.Color(fmt.Sprintf("%s", v), "white+B:red+h"))
-		}
-	}
 }
