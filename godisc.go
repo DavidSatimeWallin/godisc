@@ -364,6 +364,7 @@ func clearTellSaver(str string) bool {
 func tellSaver(str string) bool {
 	res := regComp(str, "(You tell|You ask|You exclaim|You shout|You yell) (.+):(.+)")
 	if len(res) > 1 {
+		res[1] = strings.TrimSpace(res[1])
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s : %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
@@ -381,6 +382,7 @@ func tellSaver(str string) bool {
 	}
 	res2 := regComp(str, "(.+) (tell|ask|exclaim|tells|asks|exclaims) (.+):(.+)")
 	if len(res2) > 1 {
+		res2[1] = strings.TrimSpace(res2[1])
 		if clearTellSaver(res2[1]) == false {
 			var stringToWrite string
 			t := time.Now()
