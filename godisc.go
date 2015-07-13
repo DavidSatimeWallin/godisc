@@ -314,14 +314,18 @@ func clearTellSaver(str string) bool {
 	if len(str) > tellSaverMaxLength {
 		return true
 	}
-	if strings.Contains(str[0:6], "The ") == true {
-		return true
+	if len(str) > 6 {
+		if strings.Contains(str[0:6], "The ") == true {
+			return true
+		}
+		if strings.Contains(str[0:6], "One ") == true {
+			return true
+		}
 	}
-	if strings.Contains(str[0:6], "One ") == true {
-		return true
-	}
-	if strings.Contains(str[0:12], "On the") == true {
-		return true
+	if len(str) > 12 {
+		if strings.Contains(str[0:12], "On the") == true {
+			return true
+		}
 	}
 	ignoreNpcs := make(map[string]bool)
 	ignoreNpcs["sailor"] = true
