@@ -25,8 +25,8 @@ const (
 	goDiscVersion = "0.1"
 
 	// Defining more func specific consts
-	tellSaverMaxLength  = 25
-	groupSaverMaxLength = 25
+	tellSaverMaxLength  = 30
+	groupSaverMaxLength = 30
 )
 
 var (
@@ -111,6 +111,24 @@ func goDiscInit() {
 		err := os.Mkdir(goDiscCfgDir, 0770)
 		if err != nil {
 			panic(err.Error())
+		}
+	}
+	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
+	if highLightListExists == false {
+		hiLiFile, err := os.Create(os.Getenv("goDiscCfgDir") + "highlight.list")
+		if err != nil {
+			wlog("could not create highlight.list", err.Error())
+		} else {
+			wlog("created ", hiLiFile)
+		}
+	}
+	aliasListExists, _ := exists(os.Getenv("goDiscCfgDir") + "alias.list")
+	if aliasListExists == false {
+		aliasFile, err := os.Create(os.Getenv("goDiscCfgDir") + "alias.list")
+		if err != nil {
+			wlog("could not create alias.list", err.Error())
+		} else {
+			wlog("created ", aliasFile)
 		}
 	}
 }
