@@ -18,7 +18,6 @@ import (
 )
 
 const (
-
 	// Defining var defaults
 	defaultConnectionPort = "4242" // Kingpin wants this as string and not int
 
@@ -26,7 +25,8 @@ const (
 	goDiscVersion = "0.1"
 
 	// Defining more func specific consts
-	tellSaverMaxLength = 25
+	tellSaverMaxLength  = 25
+	groupSaverMaxLength = 25
 )
 
 var (
@@ -407,11 +407,11 @@ func chatSaver(str string) bool {
 
 // groupSaver handles which strings to write to the tell history log.
 func groupSaver(str string) bool {
-	res3 := regComp(str, "\\[(\\D+)\\]\\s(.+) (.+)")
-	if len(res3) > 2 {
+	res := regComp(str, "\\[(\\D+)\\]\\s(.+) (.+)")
+	if len(res) > 2 && len(res) < groupSaverMaxLength {
 		var stringToWrite string
 		t := time.Now()
-		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] [%s] %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res3[1], "blue+b"), ansi.Color(res3[2], "magenta+b"), ansi.Color(res3[3], "cyan+b"))
+		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] [%s] %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "magenta+b"), ansi.Color(res[3], "cyan+b"))
 		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			wlog(err.Error)
@@ -424,8 +424,8 @@ func groupSaver(str string) bool {
 		}
 		return true
 	}
-	wlog(res3)
-	wlog(len(res3))
+	wlog(res)
+	wlog(len(res))
 	return false
 }
 
