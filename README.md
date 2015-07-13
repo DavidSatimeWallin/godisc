@@ -8,7 +8,7 @@ godisc is best used together with [tmux](https://tmux.github.io/).
 * Start a tmux session
 * press `CTRL+%` once
 * move to upper pane
-* press `CTRL+"
+* press `CTRL+"`
 * move to lower pane
 * run `godisc discworld.starturtle.net`
 * move to upper left pane
