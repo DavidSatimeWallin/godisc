@@ -23,16 +23,16 @@ godisc is best used together with [tmux](https://tmux.github.io/).
 * `go install github.com/dvwallin/godisc`
 
 # License
-As seen in the (LICENSE file)[https://github.com/dvwallin/godisc/blob/master/LICENSE] godisc is licensed under the MIT License.
+As seen in the [LICENSE file](https://github.com/dvwallin/godisc/blob/master/LICENSE) godisc is licensed under the MIT License.
 
 # Who built it
 David V. Wallin wrote godisc as a tiny fun hobby project.
 
 # Contact
-David V. Wallin can be reached on (twitter)[https://twitter.com/dvwallin] or on email < david@dwall.in >
+David V. Wallin can be reached on [twitter](https://twitter.com/dvwallin) or on email < david@dwall.in >
 
 # Issues and Bugs
-Any issues, bugs and requests can be posted (here)[https://github.com/dvwallin/godisc/issues]
+Any issues, bugs and requests can be posted [here](https://github.com/dvwallin/godisc/issues)
 
 # Contribute
 If you would like to contribute to the project please do so by 
