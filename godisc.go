@@ -484,7 +484,7 @@ func printMessages(msgchan <-chan string, c net.Conn) {
 
 // wlog is the generic log function which writes and given arguments to a lot file.
 func wlog(s ...interface{}) {
-	f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"godisc.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		fmt.Printf("error opening file: %v", err.Error())
 	}
