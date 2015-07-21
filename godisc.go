@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,8 +26,8 @@ const (
 	goDiscVersion = "0.1"
 
 	// Defining more func specific consts
-	tellSaverMaxLength  = 30
-	groupSaverMaxLength = 30
+	tellSaverMaxLength  = 35
+	groupSaverMaxLength = 35
 )
 
 var (
@@ -261,35 +262,37 @@ func readKeyboardInput(c net.Conn) {
 		}
 
 		inputText := strings.Fields(str)
-		cmd := findAlias(inputText)
-		if cmd == "none" {
-			joinText := strings.Join(inputText, " ")
-			if strings.Contains(joinText, "|") {
-				splitText := strings.Split(joinText, "|")
-				for _, sv := range splitText {
-					fmt.Fprintf(c, sv+"\n")
-				}
-				linenoise.AddHistory(joinText)
-			} else {
-				fmt.Fprintf(c, joinText+"\n")
-				linenoise.AddHistory(joinText)
-			}
-		} else {
-			joinText := strings.Join(inputText, " ")
-			wlog("[ CMD ]:", joinText)
-			if strings.Contains(cmd, "|") {
-				splitText := strings.Split(cmd, "|")
-				for _, v := range splitText {
-					wlog("Split cmd", v)
-					fmt.Fprintf(c, v+"\n")
+		joinText := strings.Join(inputText, " ")
+
+		checkForSleep := checkForSleeper(joinText, c)
+		if checkForSleep == false {
+			cmd := findAlias(inputText)
+			if cmd == "none" {
+				if strings.Contains(joinText, "|") {
+					splitText := strings.Split(joinText, "|")
+					for _, sv := range splitText {
+						fmt.Fprintf(c, sv+"\n")
+					}
+					linenoise.AddHistory(joinText)
+				} else {
+					fmt.Fprintf(c, joinText+"\n")
 					linenoise.AddHistory(joinText)
 				}
 			} else {
-				fmt.Fprintf(c, cmd+"\n")
-				linenoise.AddHistory(joinText)
+				wlog("[ CMD ]:", joinText)
+				if strings.Contains(cmd, "|") {
+					splitText := strings.Split(cmd, "|")
+					for _, v := range splitText {
+						wlog("Split cmd", v)
+						fmt.Fprintf(c, v+"\n")
+						linenoise.AddHistory(joinText)
+					}
+				} else {
+					fmt.Fprintf(c, cmd+"\n")
+					linenoise.AddHistory(joinText)
+				}
 			}
 		}
-
 	}
 }
 
@@ -370,7 +373,6 @@ func clearTellSaver(str string) bool {
 func tellSaver(str string) bool {
 	res := regComp(str, "(You tell|You ask|You exclaim|You shout|You yell) (.+):(.+)")
 	if len(res) > 1 {
-		res[1] = strings.TrimSpace(res[1])
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s : %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
@@ -388,7 +390,6 @@ func tellSaver(str string) bool {
 	}
 	res2 := regComp(str, "(.+) (tell|ask|exclaim|tells|asks|exclaims) (.+):(.+)")
 	if len(res2) > 1 {
-		res2[1] = strings.TrimSpace(res2[1])
 		if clearTellSaver(res2[1]) == false {
 			var stringToWrite string
 			t := time.Now()
@@ -433,7 +434,7 @@ func chatSaver(str string) bool {
 
 // groupSaver handles which strings to write to the tell history log.
 func groupSaver(str string) bool {
-	res := regComp(str, "\\[(\\D+)\\]\\s(.+) (.+)")
+	res := regComp(str, "\\[(.+)\\]\\s(.+) (.+)")
 	if len(res) > 2 && len(res) < groupSaverMaxLength {
 		var stringToWrite string
 		t := time.Now()
@@ -455,6 +456,47 @@ func groupSaver(str string) bool {
 	return false
 }
 
+// rememberSaver handles which strings to write to the tell remember log.
+func rememberSaver(str string) bool {
+	res := regComp(str, "identified as \"(.+)\"")
+	if len(res) > 1 {
+		var stringToWrite string
+		stringToWrite = fmt.Sprintf("%s", ansi.Color(res[1], "magenta+b"))
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"remember.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			wlog(err.Error)
+		}
+
+		defer f.Close()
+
+		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+			wlog(err.Error)
+		}
+		return true
+	}
+	wlog(res)
+	wlog(len(res))
+	return false
+}
+
+func checkForSleeper(str string, c net.Conn) bool {
+	res := regComp(str, "setSleeper\\(([0-9]+), (.+)\\)")
+	if len(res) > 1 {
+		wlog("Found setSleeper", res[1], res[2])
+		go func(dur string, act string, c net.Conn) {
+			intDur, convErr := strconv.Atoi(dur)
+			if convErr != nil {
+				wlog(convErr.Error())
+			}
+			wlog("Waiting for", dur, "minutes and then running", act)
+			time.Sleep(time.Duration(intDur) * time.Minute)
+			fmt.Fprintf(c, act+"\n")
+		}(res[1], res[2], c)
+		return true
+	}
+	return false
+}
+
 // printMessages listens on the msgchan and then filters the text. Everything not written to history files should be written to stdout.
 func printMessages(msgchan <-chan string, c net.Conn) {
 	fmt.Printf("\n")
@@ -468,7 +510,7 @@ func printMessages(msgchan <-chan string, c net.Conn) {
 			ignoreChatPrint := chatSaver(msg)
 			ignoreTellPrint := tellSaver(msg)
 			ignoreGroupPrint := groupSaver(msg)
-
+			rememberSaver(msg)
 			// If the three Print filters above are all false print msg to screen.
 			if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
 				if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
