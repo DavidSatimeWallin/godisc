@@ -139,7 +139,7 @@ func goDiscInit() {
 func highLight(str string) string {
 	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
 	if highLightListExists == true {
-		file, err := os.Open("highlight.list")
+		file, err := os.Open(os.Getenv("goDiscCfgDir") + "highlight.list")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -222,7 +222,7 @@ func cleanNpcString(s string) string {
 func findAlias(str []string) string {
 	aliasListExists, _ := exists(os.Getenv("goDiscCfgDir") + "alias.list")
 	if aliasListExists == true {
-		file, err := os.Open("alias.list")
+		file, err := os.Open(os.Getenv("goDiscCfgDir") + "alias.list")
 		if err != nil {
 			log.Fatal(err)
 		}
