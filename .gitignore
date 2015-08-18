@@ -1,4 +1,6 @@
 # Compiled godisc binary
+*.swp
+.tmux*
 godisc
 godisc.log
 log
