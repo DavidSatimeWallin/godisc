@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/user"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -136,6 +137,19 @@ func goDiscInit() {
 	}
 }
 
+func RemoveDuplicates(xs *[]string) {
+	found := make(map[string]bool)
+	j := 0
+	for i, x := range *xs {
+		if !found[x] {
+			found[x] = true
+			(*xs)[j] = (*xs)[i]
+			j++
+		}
+	}
+	*xs = (*xs)[:j]
+}
+
 // highLight parses through the buffer and replaces words, defined in the highlight.list, with ansi color.
 func highLight(str string) string {
 	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
@@ -248,6 +262,52 @@ func findAlias(str []string) string {
 	return "none"
 }
 
+func rmRemembers(str string) bool {
+	res := regComp(str, "(.rmRem)")
+	if len(res) > 1 {
+		rememberListExists, _ := exists(os.Getenv("goDiscCfgDir") + "remember.log")
+		if rememberListExists == true {
+			err := os.Remove(os.Getenv("goDiscCfgDir") + "remember.log")
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("Removed remember.log\n")
+			return true
+		}
+	}
+	return false
+}
+
+func listRemembers(str string, c net.Conn) bool {
+	res := regComp(str, "(.listRem)")
+	if len(res) > 1 {
+		rememberListExists, _ := exists(os.Getenv("goDiscCfgDir") + "remember.log")
+		if rememberListExists == true {
+			file, err := os.Open(os.Getenv("goDiscCfgDir") + "remember.log")
+			if err != nil {
+				log.Fatal(err)
+			}
+			defer file.Close()
+
+			scanner := bufio.NewScanner(file)
+			var lines []string
+			var output string
+			for scanner.Scan() {
+				lines = append(lines, ansi.Color(scanner.Text(), "cyan+bh"))
+			}
+			RemoveDuplicates(&lines)
+			sort.Strings(lines)
+			output = strings.Join(lines, " - ")
+			fmt.Printf("%d REMEMBERS: %s", len(lines), output+"\n")
+			if err := scanner.Err(); err != nil {
+				log.Fatal(err)
+			}
+			return true
+		}
+	}
+	return false
+}
+
 // readKeyboardInput is a go routine that reads the keyboard input and sends it to the connected buffer when enter is hit.
 func readKeyboardInput(c net.Conn) {
 	for {
@@ -263,9 +323,10 @@ func readKeyboardInput(c net.Conn) {
 
 		inputText := strings.Fields(str)
 		joinText := strings.Join(inputText, " ")
-
+		listRem := listRemembers(joinText, c)
+		rmRem := rmRemembers(joinText)
 		checkForSleep := checkForSleeper(joinText, c)
-		if checkForSleep == false {
+		if checkForSleep == false && listRem == false && rmRem == false {
 			cmd := findAlias(inputText)
 			if cmd == "none" {
 				if strings.Contains(joinText, "|") {
@@ -432,6 +493,30 @@ func chatSaver(str string) bool {
 	return false
 }
 
+// taxiSaver handles which strings to write to the talker history log.
+func taxiSaver(str string) bool {
+	res := regComp(str, "(\\(Taxi\\)) ([a-zA-Z0-9 ]+): ([a-zA-Z0-9 ]+)")
+	wlog(fmt.Sprintf("Taxisaver: %+v", res))
+	if len(res) > 1 {
+		var stringToWrite string
+		stringToWrite = fmt.Sprintf("[ %s ] %s : %s", ansi.Color("TAXI", "red+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "cyan+b"))
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"talkerChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			wlog(err.Error)
+		}
+
+		defer f.Close()
+
+		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+			wlog(err.Error)
+		}
+		return true
+	} else {
+		wlog(fmt.Sprintf("Found %d reg responses to Taxi", len(res)))
+	}
+	return false
+}
+
 // groupSaver handles which strings to write to the tell history log.
 func groupSaver(str string) bool {
 	res := regComp(str, "\\[(.+)\\]\\s(.+) (.+)")
@@ -507,12 +592,13 @@ func printMessages(msgchan <-chan string, c net.Conn) {
 			}
 
 			// Parse msg to see if it should be written to a file instead of being printed.
+			ignoreTaxiPrint := taxiSaver(msg)
 			ignoreChatPrint := chatSaver(msg)
 			ignoreTellPrint := tellSaver(msg)
 			ignoreGroupPrint := groupSaver(msg)
 			rememberSaver(msg)
 			// If the three Print filters above are all false print msg to screen.
-			if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
+			if ignoreTaxiPrint == false && ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
 				if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
 					msg = strings.Replace(msg, "There is a sudden white flash.  Your magical shield has broken.", ansi.Color("There is a sudden white flash.  Your magical shield has broken.", "red+bB"), -1)
 				}
