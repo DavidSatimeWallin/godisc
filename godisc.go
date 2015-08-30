@@ -20,15 +20,10 @@ import (
 )
 
 const (
-	// Defining var defaults
 	defaultConnectionPort = "4242" // Kingpin wants this as string and not int
-
-	// Defining generic consts
-	goDiscVersion = "0.1"
-
-	// Defining more func specific consts
-	tellSaverMaxLength  = 35
-	groupSaverMaxLength = 35
+	goDiscVersion         = "0.1"
+	tellSaverMaxLength    = 35
+	groupSaverMaxLength   = 35
 )
 
 var (
@@ -39,35 +34,19 @@ var (
 )
 
 func main() {
-
-	// Setting the version for kingpin so it can easily be viewed from the terminal.
 	kingpin.Version(goDiscVersion)
-
-	// Parsing kingpin arguments.
 	kingpin.MustParse(app.Parse(os.Args[1:]))
-
-	// Creating the channel on which the connection will post.
 	msgchan := make(chan string)
-
-	// Run our initiation function to check for needed directories.
 	goDiscInit()
-
-	// Connecting to our host.
 	conn, err := net.Dial("tcp", *connectHost+":"+*connectPort)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 	connbuf := bufio.NewReader(conn)
-
-	// Setting our Seed (used for building random ints) to use a nano unix timestamp.
 	rand.Seed(time.Now().UTC().UnixNano())
-
-	// Starting out routines for printing input we get on our buffer and handling keyboard input.
 	go printMessages(msgchan, conn)
 	go readKeyboardInput(conn)
-
-	// The main loop fomr handling the telnet stream.
 	for {
 		str, err := connbuf.ReadString('\n')
 		if err != nil {
@@ -77,8 +56,6 @@ func main() {
 		msgchan <- str
 	}
 }
-
-// exists will search for a path, or file, and return true if it exists.
 func exists(path string) (bool, error) {
 	_, err := os.Stat(path)
 	if err == nil {
@@ -89,8 +66,6 @@ func exists(path string) (bool, error) {
 	}
 	return true, err
 }
-
-// returnRand will build a map of 30 random ints and will, when called, return a random one of these random ints.
 func returnRand() int {
 	randMap := make(map[int]int)
 	for i := 0; i < 30; i++ {
@@ -98,8 +73,6 @@ func returnRand() int {
 	}
 	return randMap[rand.Intn(len(randMap))]
 }
-
-// goDiscInit checks for needed directories and files and will create these if they do not exist.
 func goDiscInit() {
 	usr, err := user.Current()
 	if err != nil {
@@ -136,7 +109,6 @@ func goDiscInit() {
 		}
 	}
 }
-
 func RemoveDuplicates(xs *[]string) {
 	found := make(map[string]bool)
 	j := 0
@@ -149,8 +121,6 @@ func RemoveDuplicates(xs *[]string) {
 	}
 	*xs = (*xs)[:j]
 }
-
-// highLight parses through the buffer and replaces words, defined in the highlight.list, with ansi color.
 func highLight(str string) string {
 	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
 	if highLightListExists == true {
@@ -174,13 +144,9 @@ func highLight(str string) string {
 	}
 	return str
 }
-
-// random gives back a random int based on the Seed defined earlier.
 func random(min, max int) int {
 	return min + rand.Intn(max-min)
 }
-
-// mapSearch walks through a map to see if a value exists.
 func mapSearch(s string, a map[int]string) (exists bool) {
 	exists = false
 	for _, v := range a {
@@ -191,8 +157,6 @@ func mapSearch(s string, a map[int]string) (exists bool) {
 	}
 	return
 }
-
-// cleanNpcString simply removes some unwanted characters from npc names.
 func cleanNpcString(s string) string {
 	foundNpcs := strings.Replace(s, "*", "", -1)
 	foundNpcs = strings.Replace(foundNpcs, "+", "", -1)
@@ -232,8 +196,6 @@ func cleanNpcString(s string) string {
 	foundNpcs = strings.TrimSpace(foundNpcs)
 	return foundNpcs
 }
-
-// findAlias reads the alias.list file to see if any keyboard input should be replaced with some pre-defined aliases or not.
 func findAlias(str []string) string {
 	aliasListExists, _ := exists(os.Getenv("goDiscCfgDir") + "alias.list")
 	if aliasListExists == true {
@@ -242,7 +204,6 @@ func findAlias(str []string) string {
 			log.Fatal(err)
 		}
 		defer file.Close()
-
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			splitScan := strings.Split(scanner.Text(), "->")
@@ -254,14 +215,12 @@ func findAlias(str []string) string {
 				}
 			}
 		}
-
 		if err := scanner.Err(); err != nil {
 			log.Fatal(err)
 		}
 	}
 	return "none"
 }
-
 func rmRemembers(str string) bool {
 	res := regComp(str, "(.rmRem)")
 	if len(res) > 1 {
@@ -277,7 +236,6 @@ func rmRemembers(str string) bool {
 	}
 	return false
 }
-
 func listRemembers(str string, c net.Conn) bool {
 	res := regComp(str, "(.listRem)")
 	if len(res) > 1 {
@@ -307,8 +265,6 @@ func listRemembers(str string, c net.Conn) bool {
 	}
 	return false
 }
-
-// readKeyboardInput is a go routine that reads the keyboard input and sends it to the connected buffer when enter is hit.
 func readKeyboardInput(c net.Conn) {
 	for {
 		str, err := linenoise.Line("")
@@ -320,7 +276,6 @@ func readKeyboardInput(c net.Conn) {
 			fmt.Printf("Unexpected error: %s\n", err)
 			quit()
 		}
-
 		inputText := strings.Fields(str)
 		joinText := strings.Join(inputText, " ")
 		listRem := listRemembers(joinText, c)
@@ -356,25 +311,17 @@ func readKeyboardInput(c net.Conn) {
 		}
 	}
 }
-
-// quit is used by linenoise as its KillSignalError.
 func quit() {
 	os.Exit(0)
 }
-
-// regComp compiles a given regex pattern and does a FindStringSubmatch on it.
 func regComp(str string, reg string) []string {
 	r, _ := regexp.Compile(reg)
 	res := r.FindStringSubmatch(str)
 	return res
 }
-
-// clearTellSaver goes through the strings of the buffer to check for certain strings that should not be written to the tell history file.
 func clearTellSaver(str string) bool {
-
 	str = strings.Replace(str, "[37m", "", -1)
 	str = strings.Replace(str, "[1m", "", -1)
-
 	if len(str) > tellSaverMaxLength {
 		return true
 	}
@@ -416,7 +363,6 @@ func clearTellSaver(str string) bool {
 	ignoreNpcs["rickshaw driver"] = true
 	ignoreNpcs["Imperial guard"] = true
 	ignoreNpcs["Ryattenoki"] = true
-
 	for k, v := range ignoreNpcs {
 		switch v {
 		case true:
@@ -429,8 +375,6 @@ func clearTellSaver(str string) bool {
 	}
 	return false
 }
-
-// tellSaver actually handles what strings to write to the tell history log.
 func tellSaver(str string) bool {
 	res := regComp(str, "(You tell|You ask|You exclaim|You shout|You yell) (.+):(.+)")
 	if len(res) > 1 {
