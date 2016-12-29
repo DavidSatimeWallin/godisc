@@ -10,42 +10,49 @@ import (
 	"os/user"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
+	"strconv"
 
 	"github.com/GeertJohan/go.linenoise"
 	"github.com/mgutz/ansi"
-	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-const (
-	defaultConnectionPort = "4242" // Kingpin wants this as string and not int
-	goDiscVersion         = "0.1"
-	tellSaverMaxLength    = 35
-	groupSaverMaxLength   = 35
-)
+type XPObj struct {
+	StartTS string
+	StartXP int
+	LastTS string
+	LastXP int
+	AverageXP int
+	TotalXP int
+}
 
 var (
-	app         = kingpin.New("chat", "A command-line chat application.")
-	connectHost = app.Arg("host", "The IP/Domain to connect to.").Required().String()
-	connectPort = app.Arg("port", "Port to connect to.").Default(defaultConnectionPort).String()
-	debug       = app.Flag("debug", "Set to true to see debug information.").Bool()
+	cHost string = "disctemp.starturtle.net"
+	cPort int = 4242
+	tellSaverMaxLength int= 35
+	groupSaverMaxLength int = 35
 )
 
 func main() {
-	kingpin.Version(goDiscVersion)
-	kingpin.MustParse(app.Parse(os.Args[1:]))
+	XP := XPObj{
+		StartTS: "",
+		StartXP: 0,
+		LastTS: "",
+		LastXP: 0,
+		AverageXP: 0,
+		TotalXP: 0,
+	}
 	msgchan := make(chan string)
 	goDiscInit()
-	conn, err := net.Dial("tcp", *connectHost+":"+*connectPort)
+	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", cHost, cPort))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 	connbuf := bufio.NewReader(conn)
 	rand.Seed(time.Now().UTC().UnixNano())
-	go printMessages(msgchan, conn)
+	go printMessages(msgchan, conn, &XP)
 	go readKeyboardInput(conn)
 	for {
 		str, err := connbuf.ReadString('\n')
@@ -66,13 +73,7 @@ func exists(path string) (bool, error) {
 	}
 	return true, err
 }
-func returnRand() int {
-	randMap := make(map[int]int)
-	for i := 0; i < 30; i++ {
-		randMap[i] = random(60, 480)
-	}
-	return randMap[rand.Intn(len(randMap))]
-}
+
 func goDiscInit() {
 	usr, err := user.Current()
 	if err != nil {
@@ -88,6 +89,15 @@ func goDiscInit() {
 		err := os.Mkdir(goDiscCfgDir, 0770)
 		if err != nil {
 			panic(err.Error())
+		}
+	}
+	xpFileExists, _ := exists(os.Getenv("goDiscCfgDir") + "xp.log")
+	if xpFileExists == false {
+		xpFile, err := os.Create(os.Getenv("goDiscCfgDir") + "xp.log")
+		if err != nil {
+			wlog("could not create xp.log", err.Error())
+		} else {
+			wlog("created ", xpFile)
 		}
 	}
 	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
@@ -144,58 +154,8 @@ func highLight(str string) string {
 	}
 	return str
 }
-func random(min, max int) int {
-	return min + rand.Intn(max-min)
-}
-func mapSearch(s string, a map[int]string) (exists bool) {
-	exists = false
-	for _, v := range a {
-		if v == s {
-			exists = true
-			return
-		}
-	}
-	return
-}
-func cleanNpcString(s string) string {
-	foundNpcs := strings.Replace(s, "*", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "+", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "$", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "-", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "/", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "\\", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "!", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "|", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "_", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "^", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "~", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "\"", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "'", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, ":", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, ";", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, ".", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "=", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "}", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "{", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "[", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "]", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "(", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, ")", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "@", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "#", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "£", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "¤", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "%", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "&", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "<", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, ">", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "010m", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "3949m", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, "31m", "", -1)
-	foundNpcs = strings.Replace(foundNpcs, " and ", ", ", -1)
-	foundNpcs = strings.TrimSpace(foundNpcs)
-	return foundNpcs
-}
+
+
 func findAlias(str []string) string {
 	aliasListExists, _ := exists(os.Getenv("goDiscCfgDir") + "alias.list")
 	if aliasListExists == true {
@@ -221,6 +181,75 @@ func findAlias(str []string) string {
 	}
 	return "none"
 }
+
+func getCurrentTime()string{
+    t := time.Now().Local()
+    return fmt.Sprintf("%s", t.Format("2006-01-02 15:04:05 +0800"))
+}
+
+func saveXp(str string, XP *XPObj) *XPObj {
+	res := regComp(str, "Xp: ([0-9]+)")
+	if len(res) > 1 {
+		resI, err := strconv.Atoi(res[1])
+		if err != nil {
+			wlog(err)
+		}
+		if XP.StartXP == 0 {
+			XP.StartXP = resI
+		}
+		if XP.StartTS == "" {
+			XP.StartTS = getCurrentTime()
+		}
+		now, err := time.Parse("2006-01-02 15:04:05 +0800", getCurrentTime())
+		if err != nil {
+			wlog(err)
+		}
+		lT, err := time.Parse("2006-01-02 15:04:05 +0800", XP.StartTS)
+		if err != nil {
+			wlog(err)
+		}
+		diff := now.Sub(lT)
+		m := int(diff.Minutes())
+		XP.LastXP = resI
+		XP.LastTS = getCurrentTime()
+		XP.TotalXP = XP.LastXP - XP.StartXP
+		XP.AverageXP = XP.TotalXP
+		if m > 1 && XP.TotalXP > 0 {
+			XP.AverageXP = ((XP.TotalXP / m) * 60)
+		}
+		var avS string
+		switch {
+			case XP.AverageXP > 9999:
+				avS = fmt.Sprintf("%dK", (XP.AverageXP / 1000))
+			case XP.AverageXP > 99999:
+				avS = fmt.Sprintf("%dM", (XP.AverageXP / 1000000))
+			default:
+				avS = fmt.Sprintf("%d", XP.AverageXP)
+		}
+		var totS string
+		switch {
+			case XP.TotalXP > 9999:
+				totS = fmt.Sprintf("%dK", (XP.TotalXP / 1000))
+			case XP.TotalXP > 99999:
+				totS = fmt.Sprintf("%dM", (XP.TotalXP / 1000000))
+			default:
+				totS = fmt.Sprintf("%d", XP.TotalXP)
+		}
+		stringToWrite := fmt.Sprintf("%s:\t%s\t\t%s:\t%s", ansi.Color("Average XP / h", "blue+b"), ansi.Color(avS, "yellow+b"), ansi.Color("Total XP", "blue+b"), ansi.Color(totS, "yellow+b"))
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"xp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			wlog(err.Error)
+		}
+
+		defer f.Close()
+
+		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+			wlog(err.Error)
+		}
+	}
+	return XP
+}
+
 func rmRemembers(str string) bool {
 	res := regComp(str, "(.rmRem)")
 	if len(res) > 1 {
@@ -280,8 +309,7 @@ func readKeyboardInput(c net.Conn) {
 		joinText := strings.Join(inputText, " ")
 		listRem := listRemembers(joinText, c)
 		rmRem := rmRemembers(joinText)
-		checkForSleep := checkForSleeper(joinText, c)
-		if checkForSleep == false && listRem == false && rmRem == false {
+		if listRem == false && rmRem == false {
 			cmd := findAlias(inputText)
 			if cmd == "none" {
 				if strings.Contains(joinText, "|") {
@@ -338,43 +366,17 @@ func clearTellSaver(str string) bool {
 			return true
 		}
 	}
-	ignoreNpcs := make(map[string]bool)
-	ignoreNpcs["sailor"] = true
-	ignoreNpcs["seagull"] = true
-	ignoreNpcs["barman"] = true
-	ignoreNpcs["samurai"] = true
-	ignoreNpcs["strongarm"] = true
-	ignoreNpcs["tramp"] = true
-	ignoreNpcs["Mihk-gran-bohp"] = true
-	ignoreNpcs["engineer"] = true
-	ignoreNpcs["warrior"] = true
-	ignoreNpcs["pickpocket"] = true
-	ignoreNpcs["Khepresh"] = true
-	ignoreNpcs["smuggler"] = true
-	ignoreNpcs["citadel"] = true
-	ignoreNpcs["guard"] = true
-	ignoreNpcs["hopelite"] = true
-	ignoreNpcs["giant"] = true
-	ignoreNpcs["schoolboy"] = true
-	ignoreNpcs["farmer"] = true
-	ignoreNpcs["soldier"] = true
-	ignoreNpcs["ceremonial"] = true
-	ignoreNpcs["Kang Wu"] = true
-	ignoreNpcs["rickshaw driver"] = true
-	ignoreNpcs["Imperial guard"] = true
-	ignoreNpcs["Ryattenoki"] = true
-	for k, v := range ignoreNpcs {
-		switch v {
-		case true:
-			if strings.Contains(str, k) == true {
-				return true
-			}
-		case false:
-			continue
+	ignoreNpcs := []string{"sailor", "seagull", "barman", "samurai", "tramp", "Mihk-gran-bohp", "engineer", "warrior", "pickpocket", "Khepresh", "smuggler", "citadel", "guard", "hopelite", "lady", "giant", "schoolboy", "farmer", "soldier", "ceremonial", "Kang Wu", "rickshaw driver", "Imperial guard", "Ryattenoki"}
+	for _, v := range ignoreNpcs {
+		if strings.Contains(str, v) == true {
+			return true
 		}
 	}
 	return false
 }
+
+
+
 func tellSaver(str string) bool {
 	res := regComp(str, "(You tell|You ask|You exclaim|You shout|You yell) (.+):(.+)")
 	if len(res) > 1 {
@@ -508,32 +510,11 @@ func rememberSaver(str string) bool {
 	return false
 }
 
-func checkForSleeper(str string, c net.Conn) bool {
-	res := regComp(str, "setSleeper\\(([0-9]+), (.+)\\)")
-	if len(res) > 1 {
-		wlog("Found setSleeper", res[1], res[2])
-		go func(dur string, act string, c net.Conn) {
-			intDur, convErr := strconv.Atoi(dur)
-			if convErr != nil {
-				wlog(convErr.Error())
-			}
-			wlog("Waiting for", dur, "minutes and then running", act)
-			time.Sleep(time.Duration(intDur) * time.Minute)
-			fmt.Fprintf(c, act+"\n")
-		}(res[1], res[2], c)
-		return true
-	}
-	return false
-}
-
 // printMessages listens on the msgchan and then filters the text. Everything not written to history files should be written to stdout.
-func printMessages(msgchan <-chan string, c net.Conn) {
+func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 	fmt.Printf("\n")
 	for msg := range msgchan {
 		if len(msg) > 1 {
-			if *debug == true {
-				wlog(ansi.Color(fmt.Sprintf("%s", msg), "white+B:red+h"))
-			}
 
 			// Parse msg to see if it should be written to a file instead of being printed.
 			ignoreTaxiPrint := taxiSaver(msg)
@@ -541,6 +522,7 @@ func printMessages(msgchan <-chan string, c net.Conn) {
 			ignoreTellPrint := tellSaver(msg)
 			ignoreGroupPrint := groupSaver(msg)
 			rememberSaver(msg)
+			XP = saveXp(msg, XP)
 			// If the three Print filters above are all false print msg to screen.
 			if ignoreTaxiPrint == false && ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
 				if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
