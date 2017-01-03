@@ -25,6 +25,7 @@ type XPObj struct {
 	LastXP int
 	AverageXP int
 	TotalXP int
+	HighestAverageXP int
 }
 
 var (
@@ -42,6 +43,7 @@ func main() {
 		LastXP: 0,
 		AverageXP: 0,
 		TotalXP: 0,
+		HighestAverageXP: 0,
 	}
 	msgchan := make(chan string)
 	goDiscInit()
@@ -217,6 +219,18 @@ func saveXp(str string, XP *XPObj) *XPObj {
 		if m > 1 && XP.TotalXP > 0 {
 			XP.AverageXP = ((XP.TotalXP / m) * 60)
 		}
+		if XP.AverageXP > XP.HighestAverageXP {
+			XP.HighestAverageXP = XP.AverageXP
+		}
+		var hAvS string
+		switch {
+			case XP.HighestAverageXP > 9999:
+				hAvS = fmt.Sprintf("%dK", (XP.HighestAverageXP / 1000))
+			case XP.HighestAverageXP > 99999:
+				hAvS = fmt.Sprintf("%dM", (XP.HighestAverageXP / 1000000))
+			default:
+				hAvS = fmt.Sprintf("%d", XP.HighestAverageXP)
+		}
 		var avS string
 		switch {
 			case XP.AverageXP > 9999:
@@ -235,7 +249,7 @@ func saveXp(str string, XP *XPObj) *XPObj {
 			default:
 				totS = fmt.Sprintf("%d", XP.TotalXP)
 		}
-		stringToWrite := fmt.Sprintf("%s:\t%s\t\t%s:\t%s", ansi.Color("Average XP / h", "blue+b"), ansi.Color(avS, "yellow+b"), ansi.Color("Total XP", "blue+b"), ansi.Color(totS, "yellow+b"))
+		stringToWrite := fmt.Sprintf("%s: %s\t\t\t%s: %s\t\t\t%s: %s", ansi.Color("Average XP / h", "blue+b"), ansi.Color(avS, "yellow+b"), ansi.Color("Highest Average XP / h", "blue+b"), ansi.Color(hAvS, "yellow+b"), ansi.Color("Total XP", "blue+b"), ansi.Color(totS, "yellow+b"))
 		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"xp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			wlog(err.Error)
@@ -515,13 +529,24 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 	fmt.Printf("\n")
 	for msg := range msgchan {
 		if len(msg) > 1 {
-
 			// Parse msg to see if it should be written to a file instead of being printed.
 			ignoreTaxiPrint := taxiSaver(msg)
 			ignoreChatPrint := chatSaver(msg)
 			ignoreTellPrint := tellSaver(msg)
 			ignoreGroupPrint := groupSaver(msg)
 			rememberSaver(msg)
+			if strings.Contains(msg, "..resetCounter..") {
+				newXP := XPObj{
+					StartTS: "",
+					StartXP: 0,
+					LastTS: "",
+					LastXP: 0,
+					AverageXP: 0,
+					TotalXP: 0,
+					HighestAverageXP: 0,
+				}
+				XP = &newXP
+			}
 			XP = saveXp(msg, XP)
 			// If the three Print filters above are all false print msg to screen.
 			if ignoreTaxiPrint == false && ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
