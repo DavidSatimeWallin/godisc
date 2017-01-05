@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"net"
@@ -10,39 +11,39 @@ import (
 	"os/user"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
 
 	"github.com/GeertJohan/go.linenoise"
 	"github.com/mgutz/ansi"
 )
 
 type XPObj struct {
-	StartTS string
-	StartXP int
-	LastTS string
-	LastXP int
-	AverageXP int
-	TotalXP int
+	StartTS          string
+	StartXP          int
+	LastTS           string
+	LastXP           int
+	AverageXP        int
+	TotalXP          int
 	HighestAverageXP int
 }
 
 var (
-	cHost string = "disctemp.starturtle.net"
-	cPort int = 4242
-	tellSaverMaxLength int= 35
-	groupSaverMaxLength int = 35
+	cHost               string = "disctemp.starturtle.net"
+	cPort               int    = 4242
+	tellSaverMaxLength  int    = 35
+	groupSaverMaxLength int    = 35
 )
 
 func main() {
 	XP := XPObj{
-		StartTS: "",
-		StartXP: 0,
-		LastTS: "",
-		LastXP: 0,
-		AverageXP: 0,
-		TotalXP: 0,
+		StartTS:          "",
+		StartXP:          0,
+		LastTS:           "",
+		LastXP:           0,
+		AverageXP:        0,
+		TotalXP:          0,
 		HighestAverageXP: 0,
 	}
 	msgchan := make(chan string)
@@ -102,6 +103,15 @@ func goDiscInit() {
 			wlog("created ", xpFile)
 		}
 	}
+	excludeFileExists, _ := exists(os.Getenv("goDiscCfgDir") + "exclude.list")
+	if excludeFileExists == false {
+		excludeFile, err := os.Create(os.Getenv("goDiscCfgDir") + "exclude.list")
+		if err != nil {
+			wlog("could not create exclude.list", err.Error())
+		} else {
+			wlog("created ", excludeFile)
+		}
+	}
 	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
 	if highLightListExists == false {
 		hiLiFile, err := os.Create(os.Getenv("goDiscCfgDir") + "highlight.list")
@@ -157,7 +167,6 @@ func highLight(str string) string {
 	return str
 }
 
-
 func findAlias(str []string) string {
 	aliasListExists, _ := exists(os.Getenv("goDiscCfgDir") + "alias.list")
 	if aliasListExists == true {
@@ -184,9 +193,9 @@ func findAlias(str []string) string {
 	return "none"
 }
 
-func getCurrentTime()string{
-    t := time.Now().Local()
-    return fmt.Sprintf("%s", t.Format("2006-01-02 15:04:05 +0800"))
+func getCurrentTime() string {
+	t := time.Now().Local()
+	return fmt.Sprintf("%s", t.Format("2006-01-02 15:04:05 +0800"))
 }
 
 func saveXp(str string, XP *XPObj) *XPObj {
@@ -224,40 +233,34 @@ func saveXp(str string, XP *XPObj) *XPObj {
 		}
 		var hAvS string
 		switch {
-			case XP.HighestAverageXP > 9999:
-				hAvS = fmt.Sprintf("%dK", (XP.HighestAverageXP / 1000))
-			case XP.HighestAverageXP > 99999:
-				hAvS = fmt.Sprintf("%dM", (XP.HighestAverageXP / 1000000))
-			default:
-				hAvS = fmt.Sprintf("%d", XP.HighestAverageXP)
+		case XP.HighestAverageXP > 9999:
+			hAvS = fmt.Sprintf("%dK", (XP.HighestAverageXP / 1000))
+		case XP.HighestAverageXP > 99999:
+			hAvS = fmt.Sprintf("%dM", (XP.HighestAverageXP / 1000000))
+		default:
+			hAvS = fmt.Sprintf("%d", XP.HighestAverageXP)
 		}
 		var avS string
 		switch {
-			case XP.AverageXP > 9999:
-				avS = fmt.Sprintf("%dK", (XP.AverageXP / 1000))
-			case XP.AverageXP > 99999:
-				avS = fmt.Sprintf("%dM", (XP.AverageXP / 1000000))
-			default:
-				avS = fmt.Sprintf("%d", XP.AverageXP)
+		case XP.AverageXP > 9999:
+			avS = fmt.Sprintf("%dK", (XP.AverageXP / 1000))
+		case XP.AverageXP > 99999:
+			avS = fmt.Sprintf("%dM", (XP.AverageXP / 1000000))
+		default:
+			avS = fmt.Sprintf("%d", XP.AverageXP)
 		}
 		var totS string
 		switch {
-			case XP.TotalXP > 9999:
-				totS = fmt.Sprintf("%dK", (XP.TotalXP / 1000))
-			case XP.TotalXP > 99999:
-				totS = fmt.Sprintf("%dM", (XP.TotalXP / 1000000))
-			default:
-				totS = fmt.Sprintf("%d", XP.TotalXP)
+		case XP.TotalXP > 9999:
+			totS = fmt.Sprintf("%dK", (XP.TotalXP / 1000))
+		case XP.TotalXP > 99999:
+			totS = fmt.Sprintf("%dM", (XP.TotalXP / 1000000))
+		default:
+			totS = fmt.Sprintf("%d", XP.TotalXP)
 		}
-		stringToWrite := fmt.Sprintf("%s: %s\t\t\t%s: %s\t\t\t%s: %s", ansi.Color("Average XP / h", "blue+b"), ansi.Color(avS, "yellow+b"), ansi.Color("Highest Average XP / h", "blue+b"), ansi.Color(hAvS, "yellow+b"), ansi.Color("Total XP", "blue+b"), ansi.Color(totS, "yellow+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"xp.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			wlog(err.Error)
-		}
+		stringToWrite := fmt.Sprintf("\n\n\n%s\t%s\n%s\t%s\n%s\t%s", ansi.Color("Average XP / h", "blue+b"), ansi.Color(avS, "yellow+b"), ansi.Color("Highest Average XP / h", "blue+b"), ansi.Color(hAvS, "yellow+b"), ansi.Color("Total XP", "blue+b"), ansi.Color(totS, "yellow+b"))
 
-		defer f.Close()
-
-		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		if err = ioutil.WriteFile(os.Getenv("goDiscCfgDir")+"xp.log", []byte(stringToWrite), 0664); err != nil {
 			wlog(err.Error)
 		}
 	}
@@ -361,6 +364,7 @@ func regComp(str string, reg string) []string {
 	res := r.FindStringSubmatch(str)
 	return res
 }
+
 func clearTellSaver(str string) bool {
 	str = strings.Replace(str, "[37m", "", -1)
 	str = strings.Replace(str, "[1m", "", -1)
@@ -380,7 +384,7 @@ func clearTellSaver(str string) bool {
 			return true
 		}
 	}
-	ignoreNpcs := []string{"sailor", "seagull", "barman", "samurai", "tramp", "Mihk-gran-bohp", "engineer", "warrior", "pickpocket", "Khepresh", "smuggler", "citadel", "guard", "hopelite", "lady", "giant", "schoolboy", "farmer", "soldier", "ceremonial", "Kang Wu", "rickshaw driver", "Imperial guard", "Ryattenoki"}
+	ignoreNpcs := []string{"sailor", "seagull", "barman", "samurai", "tramp", "Mihk-gran-bohp", "engineer", "warrior", "pickpocket", "Khepresh", "smuggler", "citadel", "guard", "hopelite", "lady", "giant", "schoolboy", "farmer", "soldier", "ceremonial", "Kang Wu", "rickshaw driver", "Imperial guard", "Ryattenoki", "Kyakenko"}
 	for _, v := range ignoreNpcs {
 		if strings.Contains(str, v) == true {
 			return true
@@ -388,8 +392,6 @@ func clearTellSaver(str string) bool {
 	}
 	return false
 }
-
-
 
 func tellSaver(str string) bool {
 	res := regComp(str, "(You tell|You ask|You exclaim|You shout|You yell) (.+):(.+)")
@@ -438,7 +440,7 @@ func chatSaver(str string) bool {
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"talkerChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			wlog(err.Error)
 		}
@@ -460,7 +462,7 @@ func taxiSaver(str string) bool {
 	if len(res) > 1 {
 		var stringToWrite string
 		stringToWrite = fmt.Sprintf("[ %s ] %s : %s", ansi.Color("TAXI", "red+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "cyan+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"talkerChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 		if err != nil {
 			wlog(err.Error)
 		}
@@ -537,12 +539,12 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 			rememberSaver(msg)
 			if strings.Contains(msg, "..resetCounter..") {
 				newXP := XPObj{
-					StartTS: "",
-					StartXP: 0,
-					LastTS: "",
-					LastXP: 0,
-					AverageXP: 0,
-					TotalXP: 0,
+					StartTS:          "",
+					StartXP:          0,
+					LastTS:           "",
+					LastXP:           0,
+					AverageXP:        0,
+					TotalXP:          0,
 					HighestAverageXP: 0,
 				}
 				XP = &newXP
