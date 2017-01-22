@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"os/user"
@@ -78,14 +77,10 @@ func main() {
 		os.Exit(1)
 	}
 	connbuf := bufio.NewReader(conn)
-	rand.Seed(time.Now().UTC().UnixNano())
 	go printMessages(msgchan, conn, &XP)
 	go readKeyboardInput(conn)
 	for {
-		str, err := connbuf.ReadString('\n')
-		if err != nil {
-			break
-		}
+		str, _ := connbuf.ReadString('\n')
 		str = highLight(str)
 		msgchan <- str
 	}
