@@ -34,9 +34,15 @@ var (
 	cPort               int    = 4242
 	tellSaverMaxLength  int    = 35
 	groupSaverMaxLength int    = 35
+	CLOGFile            *os.File
+	WLOGFile            *os.File
+	TellChatFile        *os.File
+	AliasFile           *os.File
+	HighlightFile       *os.File
 )
 
 func main() {
+	goDiscInit()
 	XP := XPObj{
 		StartTS:          "",
 		StartXP:          0,
@@ -46,8 +52,26 @@ func main() {
 		TotalXP:          0,
 		HighestAverageXP: 0,
 	}
+
+	var err error
+	CLOGFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"clog", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		wlog(err.Error)
+	}
+	WLOGFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		wlog(err.Error)
+	}
+	TellChatFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		wlog(err.Error)
+	}
+
+	defer CLOGFile.Close()
+	defer WLOGFile.Close()
+	defer TellChatFile.Close()
+
 	msgchan := make(chan string)
-	goDiscInit()
 	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", cHost, cPort))
 	if err != nil {
 		fmt.Println(err)
@@ -144,51 +168,44 @@ func RemoveDuplicates(xs *[]string) {
 	*xs = (*xs)[:j]
 }
 func highLight(str string) string {
-	highLightListExists, _ := exists(os.Getenv("goDiscCfgDir") + "highlight.list")
-	if highLightListExists == true {
-		file, err := os.Open(os.Getenv("goDiscCfgDir") + "highlight.list")
-		if err != nil {
-			log.Fatal(err)
+	var err error
+	HighlightFile, err = os.Open(os.Getenv("goDiscCfgDir") + "highlight.list")
+	if err != nil {
+		wlog(err.Error)
+	}
+	defer HighlightFile.Close()
+	scanner := bufio.NewScanner(HighlightFile)
+	for scanner.Scan() {
+		if strings.Contains(str, scanner.Text()) {
+			str = strings.Replace(str, scanner.Text(), ansi.Color(scanner.Text(), "red+b"), -1)
 		}
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			if strings.Contains(str, scanner.Text()) {
-				str = strings.Replace(str, scanner.Text(), ansi.Color(scanner.Text(), "red+b"), -1)
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			log.Fatal(err)
-		}
-	} else {
-		wlog("Could not find", os.Getenv("goDiscCfgDir")+"highlight.list")
+	}
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
 	}
 	return str
 }
 
 func findAlias(str []string) string {
-	aliasListExists, _ := exists(os.Getenv("goDiscCfgDir") + "alias.list")
-	if aliasListExists == true {
-		file, err := os.Open(os.Getenv("goDiscCfgDir") + "alias.list")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			splitScan := strings.Split(scanner.Text(), "->")
-			if len(splitScan) > 1 {
-				for _, v := range str {
-					if splitScan[0] == v {
-						return splitScan[1]
-					}
+	var err error
+	AliasFile, err = os.Open(os.Getenv("goDiscCfgDir") + "alias.list")
+	if err != nil {
+		wlog(err.Error)
+	}
+	defer AliasFile.Close()
+	scanner := bufio.NewScanner(AliasFile)
+	for scanner.Scan() {
+		splitScan := strings.Split(scanner.Text(), "->")
+		if len(splitScan) > 1 {
+			for _, v := range str {
+				if splitScan[0] == v {
+					return splitScan[1]
 				}
 			}
 		}
-		if err := scanner.Err(); err != nil {
-			log.Fatal(err)
-		}
+	}
+	if err := scanner.Err(); err != nil {
+		wlog(err)
 	}
 	return "none"
 }
@@ -258,7 +275,7 @@ func saveXp(str string, XP *XPObj) *XPObj {
 		default:
 			totS = fmt.Sprintf("%d", XP.TotalXP)
 		}
-		stringToWrite := fmt.Sprintf("\n\n\n%s\t%s\n%s\t%s\n%s\t%s", ansi.Color("Average XP / h", "blue+b"), ansi.Color(avS, "yellow+b"), ansi.Color("Highest Average XP / h", "blue+b"), ansi.Color(hAvS, "yellow+b"), ansi.Color("Total XP", "blue+b"), ansi.Color(totS, "yellow+b"))
+		stringToWrite := fmt.Sprintf("\n\n\n\n\n\n\n\n\n\n\n\n\n\n%s\t%s\n%s\t%s\n%s\t%s", ansi.Color("Average XP / h", "blue+b"), ansi.Color(avS, "yellow+b"), ansi.Color("Highest Average XP / h", "blue+b"), ansi.Color(hAvS, "yellow+b"), ansi.Color("Total XP", "blue+b"), ansi.Color(totS, "yellow+b"))
 
 		if err = ioutil.WriteFile(os.Getenv("goDiscCfgDir")+"xp.log", []byte(stringToWrite), 0664); err != nil {
 			wlog(err.Error)
@@ -335,22 +352,24 @@ func readKeyboardInput(c net.Conn) {
 						fmt.Fprintf(c, sv+"\n")
 					}
 					linenoise.AddHistory(joinText)
+					clog(joinText)
 				} else {
 					fmt.Fprintf(c, joinText+"\n")
 					linenoise.AddHistory(joinText)
+					clog(joinText)
 				}
 			} else {
-				wlog("[ CMD ]:", joinText)
 				if strings.Contains(cmd, "|") {
 					splitText := strings.Split(cmd, "|")
 					for _, v := range splitText {
-						wlog("Split cmd", v)
 						fmt.Fprintf(c, v+"\n")
 						linenoise.AddHistory(joinText)
+						clog(joinText)
 					}
 				} else {
 					fmt.Fprintf(c, cmd+"\n")
 					linenoise.AddHistory(joinText)
+					clog(joinText)
 				}
 			}
 		}
@@ -399,14 +418,7 @@ func tellSaver(str string) bool {
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s : %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			wlog(err.Error)
-		}
-
-		defer f.Close()
-
-		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
 			wlog(err.Error)
 		}
 		return true
@@ -417,14 +429,7 @@ func tellSaver(str string) bool {
 			var stringToWrite string
 			t := time.Now()
 			stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s : %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(strings.Replace(strings.TrimSpace(res2[1]), ">", "", -1), "blue+b"), ansi.Color(res2[3], "yellow+b"), ansi.Color(res2[4], "green+b"))
-			f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-			if err != nil {
-				wlog(err.Error)
-			}
-
-			defer f.Close()
-
-			if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+			if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
 				wlog(err.Error)
 			}
 			return true
@@ -440,14 +445,7 @@ func chatSaver(str string) bool {
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			wlog(err.Error)
-		}
-
-		defer f.Close()
-
-		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
 			wlog(err.Error)
 		}
 		return true
@@ -462,14 +460,7 @@ func taxiSaver(str string) bool {
 	if len(res) > 1 {
 		var stringToWrite string
 		stringToWrite = fmt.Sprintf("[ %s ] %s : %s", ansi.Color("TAXI", "red+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "cyan+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			wlog(err.Error)
-		}
-
-		defer f.Close()
-
-		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
 			wlog(err.Error)
 		}
 		return true
@@ -486,20 +477,11 @@ func groupSaver(str string) bool {
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] [%s] %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "magenta+b"), ansi.Color(res[3], "cyan+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			wlog(err.Error)
-		}
-
-		defer f.Close()
-
-		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
 			wlog(err.Error)
 		}
 		return true
 	}
-	wlog(res)
-	wlog(len(res))
 	return false
 }
 
@@ -516,13 +498,11 @@ func rememberSaver(str string) bool {
 
 		defer f.Close()
 
-		if _, err = f.WriteString(stringToWrite + "\n"); err != nil {
+		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
 			wlog(err.Error)
 		}
 		return true
 	}
-	wlog(res)
-	wlog(len(res))
 	return false
 }
 
@@ -531,6 +511,7 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 	fmt.Printf("\n")
 	for msg := range msgchan {
 		if len(msg) > 1 {
+			clog(msg)
 			// Parse msg to see if it should be written to a file instead of being printed.
 			ignoreTaxiPrint := taxiSaver(msg)
 			ignoreChatPrint := chatSaver(msg)
@@ -563,14 +544,16 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 	}
 }
 
+// clog is the function that logs EVERYTHING!!
+func clog(s ...interface{}) {
+	t := time.Now()
+	stringToWrite := fmt.Sprintf("[ %d-%d-%d %d:%d:%d ]", t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second())
+	if _, err := CLOGFile.WriteString(stringToWrite + fmt.Sprintf(" %s", s...)); err != nil {
+		wlog(err.Error)
+	}
+}
+
 // wlog is the generic log function which writes and given arguments to a lot file.
 func wlog(s ...interface{}) {
-	f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		fmt.Printf("error opening file: %v", err.Error())
-	}
-	defer f.Close()
-
-	log.SetOutput(f)
-	log.Println(s)
+	WLOGFile.WriteString(fmt.Sprintf(" %s", s...))
 }
