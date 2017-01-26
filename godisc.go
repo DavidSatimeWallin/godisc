@@ -16,6 +16,7 @@ import (
 
 	"github.com/GeertJohan/go.linenoise"
 	"github.com/mgutz/ansi"
+	"github.com/stesla/gotelnet"
 )
 
 type XPObj struct {
@@ -71,7 +72,8 @@ func main() {
 	defer TellChatFile.Close()
 
 	msgchan := make(chan string)
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", cHost, cPort))
+	conn, err := gotelnet.Dial(fmt.Sprintf("%s:%d", cHost, cPort))
+	//conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", cHost, cPort))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
