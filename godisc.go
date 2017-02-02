@@ -364,7 +364,9 @@ func readKeyboardInput(c net.Conn) {
 						clog(joinText)
 					}
 				} else {
-					fmt.Fprintf(c, cmd+"\n")
+					//fmt.Fprintf(c, cmd+"\n")
+					_, err := c.Write([]byte(cmd + "\n"))
+					wlog(err)
 					linenoise.AddHistory(joinText)
 					clog(joinText)
 				}
