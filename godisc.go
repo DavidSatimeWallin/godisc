@@ -325,6 +325,7 @@ func listRemembers(str string, c net.Conn) bool {
 	}
 	return false
 }
+
 func readKeyboardInput(c net.Conn) {
 	for {
 		str, err := linenoise.Line("")
