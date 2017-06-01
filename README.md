@@ -20,7 +20,7 @@ You need to have tmux and Go installed!
 ( Only amd64 supported on Linux so far )
 
 * `git clone https://github.com/dvwallin/godisc.git ~/godisc`
-* `cp ~/godisc/binaries/amd64-godisc /usr/local/bin/godisc`
+* `sudo cp ~/godisc/binaries/amd64-godisc /usr/local/bin/godisc`
 * `~/godisc/launch-godisc.sh`
 
 # License
