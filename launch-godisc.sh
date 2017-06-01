@@ -13,7 +13,7 @@ tmux select-pane -t 1
 tmux send-keys "tail -f /home/$SESSION/.config/godisc/tellChat.log" C-m
 tmux select-pane -t 2
 tmux resize-pane -t 2 -y 32
-tmux send-keys "/home/$SESSION/gocode/bin/godisc discworld.starturtle.net 4242" C-m
+tmux send-keys "/usr/local/bin/godisc discworld.starturtle.net 4242" C-m
 
 # Set default window
 tmux select-window -t $SESSION:1
