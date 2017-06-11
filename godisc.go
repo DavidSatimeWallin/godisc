@@ -172,9 +172,20 @@ func highLight(str string) string {
 	}
 	defer HighlightFile.Close()
 	scanner := bufio.NewScanner(HighlightFile)
+	var row string
+	var color string
 	for scanner.Scan() {
-		if strings.Contains(str, scanner.Text()) {
-			str = strings.Replace(str, scanner.Text(), ansi.Color(scanner.Text(), "red+b"), -1)
+		color = "red"
+		row = scanner.Text()
+		if strings.Contains(row, "#") {
+			exp := strings.Split(row, "#")
+			if len(exp) > 1 {
+				row = exp[0]
+				color = exp[1]
+			}
+		}
+		if strings.Contains(str, row) {
+			str = strings.Replace(str, row, ansi.Color(row, fmt.Sprintf("%s+b", color)), -1)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -185,24 +196,43 @@ func highLight(str string) string {
 
 func findAlias(str []string) string {
 	var err error
-	AliasFile, err = os.Open(os.Getenv("goDiscCfgDir") + "alias.list")
+	var b []byte
+	var multipleInputVars bool
+
+	if len(str) > 1 {
+		multipleInputVars = true
+	}
+
+	b, err = ioutil.ReadFile(os.Getenv("goDiscCfgDir") + "alias.list")
+
 	if err != nil {
 		wlog(err.Error)
 	}
-	defer AliasFile.Close()
-	scanner := bufio.NewScanner(AliasFile)
-	for scanner.Scan() {
-		splitScan := strings.Split(scanner.Text(), "->")
-		if len(splitScan) > 1 {
-			for _, v := range str {
-				if splitScan[0] == v {
-					return splitScan[1]
+
+	var fileContent string = string(b)
+
+	var lines []string = strings.Split(fileContent, "\n")
+
+	if len(lines) > 0 {
+		for _, v := range lines {
+			ex := strings.Split(v, "->")
+			if len(ex) > 1 {
+				if strings.Contains(ex[1], "##") && multipleInputVars {
+					ex[1] = strings.Replace(ex[1], "##", str[1], -1)
+				}
+			}
+			if multipleInputVars {
+				for _, v := range str {
+					if v == ex[0] {
+						return ex[1]
+					}
+				}
+			} else {
+				if str[0] == ex[0] {
+					return ex[1]
 				}
 			}
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		wlog(err)
 	}
 	return "none"
 }
