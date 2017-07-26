@@ -41,6 +41,10 @@ var (
 	HighlightFile       *os.File
 )
 
+const (
+	AliasDynamicPlaceholder = "##"
+)
+
 func main() {
 	goDiscInit()
 	XP := XPObj{
@@ -172,9 +176,23 @@ func highLight(str string) string {
 	}
 	defer HighlightFile.Close()
 	scanner := bufio.NewScanner(HighlightFile)
+	var row string
+	var color string
 	for scanner.Scan() {
-		if strings.Contains(str, scanner.Text()) {
-			str = strings.Replace(str, scanner.Text(), ansi.Color(scanner.Text(), "red+b"), -1)
+		color = "red"
+		row = scanner.Text()
+		if strings.Contains(row, ";;") || len(row) < 1 {
+			continue
+		}
+		if strings.Contains(row, "#") {
+			exp := strings.Split(row, "#")
+			if len(exp) > 1 {
+				row = exp[0]
+				color = exp[1]
+			}
+		}
+		if strings.Contains(str, row) {
+			str = strings.Replace(str, row, ansi.Color(row, fmt.Sprintf("%s+b", color)), -1)
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -184,25 +202,52 @@ func highLight(str string) string {
 }
 
 func findAlias(str []string) string {
+	if len(str) < 1 {
+		return "none"
+	}
+
 	var err error
-	AliasFile, err = os.Open(os.Getenv("goDiscCfgDir") + "alias.list")
+	var b []byte
+	var multipleInputVars bool
+
+	if len(str) > 1 {
+		multipleInputVars = true
+	}
+
+	b, err = ioutil.ReadFile(os.Getenv("goDiscCfgDir") + "alias.list")
+
 	if err != nil {
 		wlog(err.Error)
 	}
-	defer AliasFile.Close()
-	scanner := bufio.NewScanner(AliasFile)
-	for scanner.Scan() {
-		splitScan := strings.Split(scanner.Text(), "->")
-		if len(splitScan) > 1 {
-			for _, v := range str {
-				if splitScan[0] == v {
-					return splitScan[1]
+
+	var fileContent string = string(b)
+
+	var lines []string = strings.Split(fileContent, "\n")
+
+	if len(lines) > 0 {
+		for _, v := range lines {
+			ex := strings.Split(v, "->")
+			if len(ex) > 1 {
+				if strings.Contains(ex[1], AliasDynamicPlaceholder) && multipleInputVars {
+					var repStr string
+					for i := 1; i < len(str); i++ {
+						repStr = fmt.Sprintf("%s %s", repStr, str[i])
+					}
+					ex[1] = strings.Replace(ex[1], AliasDynamicPlaceholder, repStr, -1)
+				}
+			}
+			if multipleInputVars {
+				for _, v := range str {
+					if v == ex[0] {
+						return ex[1]
+					}
+				}
+			} else {
+				if str[0] == ex[0] {
+					return ex[1]
 				}
 			}
 		}
-	}
-	if err := scanner.Err(); err != nil {
-		wlog(err)
 	}
 	return "none"
 }
@@ -325,6 +370,7 @@ func listRemembers(str string, c net.Conn) bool {
 	}
 	return false
 }
+
 func readKeyboardInput(c net.Conn) {
 	for {
 		str, err := linenoise.Line("")
@@ -473,6 +519,9 @@ func taxiSaver(str string) bool {
 func groupSaver(str string) bool {
 	res := regComp(str, "\\[(.+)\\]\\s(.+) (.+)")
 	if len(res) > 2 && len(res) < groupSaverMaxLength {
+		if len(res[1]) < 3 || strings.Contains(res[2], "no destination") {
+			return false
+		}
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] [%s] %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "magenta+b"), ansi.Color(res[3], "cyan+b"))
