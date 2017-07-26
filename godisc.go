@@ -41,6 +41,10 @@ var (
 	HighlightFile       *os.File
 )
 
+const (
+	AliasDynamicPlaceholder = "##"
+)
+
 func main() {
 	goDiscInit()
 	XP := XPObj{
@@ -177,6 +181,9 @@ func highLight(str string) string {
 	for scanner.Scan() {
 		color = "red"
 		row = scanner.Text()
+		if strings.Contains(row, ";;") || len(row) < 1 {
+			continue
+		}
 		if strings.Contains(row, "#") {
 			exp := strings.Split(row, "#")
 			if len(exp) > 1 {
@@ -195,6 +202,10 @@ func highLight(str string) string {
 }
 
 func findAlias(str []string) string {
+	if len(str) < 1 {
+		return "none"
+	}
+
 	var err error
 	var b []byte
 	var multipleInputVars bool
@@ -217,8 +228,12 @@ func findAlias(str []string) string {
 		for _, v := range lines {
 			ex := strings.Split(v, "->")
 			if len(ex) > 1 {
-				if strings.Contains(ex[1], "##") && multipleInputVars {
-					ex[1] = strings.Replace(ex[1], "##", str[1], -1)
+				if strings.Contains(ex[1], AliasDynamicPlaceholder) && multipleInputVars {
+					var repStr string
+					for i := 1; i < len(str); i++ {
+						repStr = fmt.Sprintf("%s %s", repStr, str[i])
+					}
+					ex[1] = strings.Replace(ex[1], AliasDynamicPlaceholder, repStr, -1)
 				}
 			}
 			if multipleInputVars {
@@ -504,6 +519,9 @@ func taxiSaver(str string) bool {
 func groupSaver(str string) bool {
 	res := regComp(str, "\\[(.+)\\]\\s(.+) (.+)")
 	if len(res) > 2 && len(res) < groupSaverMaxLength {
+		if len(res[1]) < 3 || strings.Contains(res[2], "no destination") {
+			return false
+		}
 		var stringToWrite string
 		t := time.Now()
 		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] [%s] %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "magenta+b"), ansi.Color(res[3], "cyan+b"))
