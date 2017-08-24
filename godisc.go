@@ -9,14 +9,14 @@ import (
 	"os"
 	"os/user"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/GeertJohan/go.linenoise"
 	"github.com/mgutz/ansi"
+	cache "github.com/patrickmn/go-cache"
 	"github.com/stesla/gotelnet"
+	linenoise "pkg.re/essentialkaos/go-linenoise.v3"
 )
 
 type XPObj struct {
@@ -39,6 +39,7 @@ var (
 	TellChatFile        *os.File
 	AliasFile           *os.File
 	HighlightFile       *os.File
+	C                   *cache.Cache
 )
 
 const (
@@ -46,7 +47,6 @@ const (
 )
 
 func main() {
-	goDiscInit()
 	XP := XPObj{
 		StartTS:          "",
 		StartXP:          0,
@@ -56,6 +56,9 @@ func main() {
 		TotalXP:          0,
 		HighestAverageXP: 0,
 	}
+
+	C = cache.New(5*time.Minute, 10*time.Minute)
+	cacheHighlights()
 
 	var err error
 	CLOGFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"clog", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
@@ -77,7 +80,6 @@ func main() {
 
 	msgchan := make(chan string)
 	conn, err := gotelnet.Dial(fmt.Sprintf("%s:%d", cHost, cPort))
-	//conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", cHost, cPort))
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -102,7 +104,7 @@ func exists(path string) (bool, error) {
 	return true, err
 }
 
-func goDiscInit() {
+func init() {
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
@@ -168,16 +170,18 @@ func RemoveDuplicates(xs *[]string) {
 	}
 	*xs = (*xs)[:j]
 }
-func highLight(str string) string {
-	var err error
+
+func cacheHighlights() {
+	var (
+		err   error
+		color string
+		row   string
+	)
 	HighlightFile, err = os.Open(os.Getenv("goDiscCfgDir") + "highlight.list")
 	if err != nil {
-		wlog(err.Error)
+		wlog("could not open highlight.list -file", err.Error())
 	}
-	defer HighlightFile.Close()
 	scanner := bufio.NewScanner(HighlightFile)
-	var row string
-	var color string
 	for scanner.Scan() {
 		color = "red"
 		row = scanner.Text()
@@ -191,14 +195,19 @@ func highLight(str string) string {
 				color = exp[1]
 			}
 		}
-		if strings.Contains(str, row) {
-			str = strings.Replace(str, row, ansi.Color(row, fmt.Sprintf("%s+b", color)), -1)
-		}
+		log.Println("Saving", row, "with color", color)
+		C.Set(row, color, cache.NoExpiration)
 	}
-	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+}
+
+func highLight(str string) string {
+	cachedItems := C.Items()
+
+	for k, v := range cachedItems {
+		str = strings.Replace(str, k, ansi.Color(k, fmt.Sprintf("%s+b", v.Object)), -1)
 	}
 	return str
+
 }
 
 func findAlias(str []string) string {
@@ -326,57 +335,12 @@ func saveXp(str string, XP *XPObj) *XPObj {
 	return XP
 }
 
-func rmRemembers(str string) bool {
-	res := regComp(str, "(.rmRem)")
-	if len(res) > 1 {
-		rememberListExists, _ := exists(os.Getenv("goDiscCfgDir") + "remember.log")
-		if rememberListExists == true {
-			err := os.Remove(os.Getenv("goDiscCfgDir") + "remember.log")
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("Removed remember.log\n")
-			return true
-		}
-	}
-	return false
-}
-func listRemembers(str string, c net.Conn) bool {
-	res := regComp(str, "(.listRem)")
-	if len(res) > 1 {
-		rememberListExists, _ := exists(os.Getenv("goDiscCfgDir") + "remember.log")
-		if rememberListExists == true {
-			file, err := os.Open(os.Getenv("goDiscCfgDir") + "remember.log")
-			if err != nil {
-				log.Fatal(err)
-			}
-			defer file.Close()
-
-			scanner := bufio.NewScanner(file)
-			var lines []string
-			var output string
-			for scanner.Scan() {
-				lines = append(lines, ansi.Color(scanner.Text(), "cyan+bh"))
-			}
-			RemoveDuplicates(&lines)
-			sort.Strings(lines)
-			output = strings.Join(lines, " - ")
-			fmt.Printf("%d REMEMBERS: %s", len(lines), output+"\n")
-			if err := scanner.Err(); err != nil {
-				log.Fatal(err)
-			}
-			return true
-		}
-	}
-	return false
-}
-
 func readKeyboardInput(c net.Conn) {
 	for {
 		str, err := linenoise.Line("")
 		wlog(str)
 		if err != nil {
-			if err == linenoise.KillSignalError {
+			if err == linenoise.ErrKillSignal {
 				quit()
 			}
 			fmt.Printf("Unexpected error: %s\n", err)
@@ -384,38 +348,34 @@ func readKeyboardInput(c net.Conn) {
 		}
 		inputText := strings.Fields(str)
 		joinText := strings.Join(inputText, " ")
-		listRem := listRemembers(joinText, c)
-		rmRem := rmRemembers(joinText)
-		if listRem == false && rmRem == false {
-			cmd := findAlias(inputText)
-			if cmd == "none" {
-				if strings.Contains(joinText, "|") {
-					splitText := strings.Split(joinText, "|")
-					for _, sv := range splitText {
-						fmt.Fprintf(c, sv+"\n")
-					}
-					linenoise.AddHistory(joinText)
-					clog(joinText)
-				} else {
-					fmt.Fprintf(c, joinText+"\n")
+		cmd := findAlias(inputText)
+		if cmd == "none" {
+			if strings.Contains(joinText, "|") {
+				splitText := strings.Split(joinText, "|")
+				for _, sv := range splitText {
+					fmt.Fprintf(c, sv+"\n")
+				}
+				linenoise.AddHistory(joinText)
+				clog(joinText)
+			} else {
+				fmt.Fprintf(c, joinText+"\n")
+				linenoise.AddHistory(joinText)
+				clog(joinText)
+			}
+		} else {
+			if strings.Contains(cmd, "|") {
+				splitText := strings.Split(cmd, "|")
+				for _, v := range splitText {
+					fmt.Fprintf(c, v+"\n")
 					linenoise.AddHistory(joinText)
 					clog(joinText)
 				}
 			} else {
-				if strings.Contains(cmd, "|") {
-					splitText := strings.Split(cmd, "|")
-					for _, v := range splitText {
-						fmt.Fprintf(c, v+"\n")
-						linenoise.AddHistory(joinText)
-						clog(joinText)
-					}
-				} else {
-					//fmt.Fprintf(c, cmd+"\n")
-					_, err := c.Write([]byte(cmd + "\n"))
-					wlog(err)
-					linenoise.AddHistory(joinText)
-					clog(joinText)
-				}
+				//fmt.Fprintf(c, cmd+"\n")
+				_, err := c.Write([]byte(cmd + "\n"))
+				wlog(err)
+				linenoise.AddHistory(joinText)
+				clog(joinText)
 			}
 		}
 	}
@@ -448,7 +408,7 @@ func clearTellSaver(str string) bool {
 			return true
 		}
 	}
-	ignoreNpcs := []string{"sailor", "seagull", "barman", "samurai", "tramp", "Mihk-gran-bohp", "engineer", "warrior", "pickpocket", "Khepresh", "smuggler", "citadel", "guard", "hopelite", "lady", "giant", "schoolboy", "farmer", "soldier", "ceremonial", "Kang Wu", "rickshaw driver", "Imperial guard", "Ryattenoki", "Kyakenko"}
+	ignoreNpcs := []string{"sailor", "seagull", "barman", "samurai", "tramp", "Mihk-gran-bohp", "engineer", "warrior", "pickpocket", "Khepresh", "smuggler", "citadel", "guard", "hopelite", "lady", "giant", "schoolboy", "farmer", "soldier", "ceremonial", "Kang Wu", "rickshaw driver", "Imperial guard", "Ryattenoki", "Kyakenko", "actor", "youth"}
 	for _, v := range ignoreNpcs {
 		if strings.Contains(str, v) == true {
 			return true
@@ -566,7 +526,19 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 			ignoreTellPrint := tellSaver(msg)
 			ignoreGroupPrint := groupSaver(msg)
 			rememberSaver(msg)
-			if strings.Contains(msg, "..resetCounter..") {
+			if strings.Contains(msg, "letMeResetCounter") {
+				newXP := XPObj{
+					StartTS:          "",
+					StartXP:          0,
+					LastTS:           "",
+					LastXP:           0,
+					AverageXP:        0,
+					TotalXP:          0,
+					HighestAverageXP: 0,
+				}
+				XP = &newXP
+			}
+			if XP.AverageXP < 0 || XP.TotalXP < 0 {
 				newXP := XPObj{
 					StartTS:          "",
 					StartXP:          0,
