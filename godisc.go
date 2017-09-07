@@ -445,7 +445,7 @@ func tellSaver(str string) bool {
 
 // chatSaver handles which strings to write to the talker history log.
 func chatSaver(str string) bool {
-	pattern := `\((.+)\)\s(.+:|.+ whisps)(.+)`
+	pattern := `\((.+)\)\s(.+:|.+ whisps|.+ )(.+)`
 	res := regComp(str, pattern)
 	if len(res) > 1 {
 		var stringToWrite string
