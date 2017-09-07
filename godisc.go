@@ -384,7 +384,7 @@ func quit() {
 	os.Exit(0)
 }
 func regComp(str string, reg string) []string {
-	r, _ := regexp.Compile(reg)
+	r := regexp.MustCompile(reg)
 	res := r.FindStringSubmatch(str)
 	return res
 }
@@ -445,7 +445,8 @@ func tellSaver(str string) bool {
 
 // chatSaver handles which strings to write to the talker history log.
 func chatSaver(str string) bool {
-	res := regComp(str, "\\((\\D+)\\) (.+)wisps(.+)")
+	pattern := `\((.+)\)\s(.+:|.+ whisps)(.+)`
+	res := regComp(str, pattern)
 	if len(res) > 1 {
 		var stringToWrite string
 		t := time.Now()
@@ -454,23 +455,6 @@ func chatSaver(str string) bool {
 			wlog(err.Error)
 		}
 		return true
-	}
-	return false
-}
-
-// taxiSaver handles which strings to write to the talker history log.
-func taxiSaver(str string) bool {
-	res := regComp(str, "(\\(Taxi\\)) ([a-zA-Z0-9 ]+): ([a-zA-Z0-9 ]+)")
-	wlog(fmt.Sprintf("Taxisaver: %+v", res))
-	if len(res) > 1 {
-		var stringToWrite string
-		stringToWrite = fmt.Sprintf("[ %s ] %s : %s", ansi.Color("TAXI", "red+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "cyan+b"))
-		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
-			wlog(err.Error)
-		}
-		return true
-	} else {
-		wlog(fmt.Sprintf("Found %d reg responses to Taxi", len(res)))
 	}
 	return false
 }
@@ -521,7 +505,6 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 		if len(msg) > 1 {
 			clog(msg)
 			// Parse msg to see if it should be written to a file instead of being printed.
-			ignoreTaxiPrint := taxiSaver(msg)
 			ignoreChatPrint := chatSaver(msg)
 			ignoreTellPrint := tellSaver(msg)
 			ignoreGroupPrint := groupSaver(msg)
@@ -552,7 +535,7 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 			}
 			XP = saveXp(msg, XP)
 			// If the three Print filters above are all false print msg to screen.
-			if ignoreTaxiPrint == false && ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
+			if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
 				if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
 					msg = strings.Replace(msg, "There is a sudden white flash.  Your magical shield has broken.", ansi.Color("There is a sudden white flash.  Your magical shield has broken.", "red+bB"), -1)
 				}
