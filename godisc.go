@@ -13,21 +13,24 @@ import (
 	"strings"
 	"time"
 
+	"github.com/anaskhan96/soup"
 	"github.com/mgutz/ansi"
 	cache "github.com/patrickmn/go-cache"
 	"github.com/stesla/gotelnet"
 	linenoise "pkg.re/essentialkaos/go-linenoise.v3"
 )
 
-type XPObj struct {
-	StartTS          string
-	StartXP          int
-	LastTS           string
-	LastXP           int
-	AverageXP        int
-	TotalXP          int
-	HighestAverageXP int
-}
+type (
+	XPObj struct {
+		StartTS          string
+		StartXP          int
+		LastTS           string
+		LastXP           int
+		AverageXP        int
+		TotalXP          int
+		HighestAverageXP int
+	}
+)
 
 var (
 	cHost               string = "disctemp.starturtle.net"
@@ -40,69 +43,13 @@ var (
 	AliasFile           *os.File
 	HighlightFile       *os.File
 	C                   *cache.Cache
+	Clubs               *cache.Cache
+	ChatItems           string
 )
 
 const (
 	AliasDynamicPlaceholder = "##"
 )
-
-func main() {
-	XP := XPObj{
-		StartTS:          "",
-		StartXP:          0,
-		LastTS:           "",
-		LastXP:           0,
-		AverageXP:        0,
-		TotalXP:          0,
-		HighestAverageXP: 0,
-	}
-
-	C = cache.New(5*time.Minute, 10*time.Minute)
-	cacheHighlights()
-
-	var err error
-	CLOGFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"clog", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		wlog(err.Error)
-	}
-	WLOGFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		wlog(err.Error)
-	}
-	TellChatFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		wlog(err.Error)
-	}
-
-	defer CLOGFile.Close()
-	defer WLOGFile.Close()
-	defer TellChatFile.Close()
-
-	msgchan := make(chan string)
-	conn, err := gotelnet.Dial(fmt.Sprintf("%s:%d", cHost, cPort))
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	connbuf := bufio.NewReader(conn)
-	go printMessages(msgchan, conn, &XP)
-	go readKeyboardInput(conn)
-	for {
-		str, _ := connbuf.ReadString('\n')
-		str = highLight(str)
-		msgchan <- str
-	}
-}
-func exists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return true, err
-}
 
 func init() {
 	usr, err := user.Current()
@@ -157,7 +104,79 @@ func init() {
 			wlog("created ", aliasFile)
 		}
 	}
+
 }
+
+func main() {
+	XP := XPObj{
+		StartTS:          "",
+		StartXP:          0,
+		LastTS:           "",
+		LastXP:           0,
+		AverageXP:        0,
+		TotalXP:          0,
+		HighestAverageXP: 0,
+	}
+
+	C = cache.New(5*time.Minute, 10*time.Minute)
+	cacheHighlights()
+
+	Clubs = cache.New(5*time.Minute, 10*time.Minute)
+	cacheClubNames()
+
+	addTalkersToClubCache()
+
+	var tmpItems []string
+	for k, _ := range Clubs.Items() {
+		tmpItems = append(tmpItems, k)
+	}
+	ChatItems = strings.Join(tmpItems, "|")
+	fmt.Println("Now have", ChatItems)
+
+	var err error
+	CLOGFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"clog", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		wlog(err.Error)
+	}
+	WLOGFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		wlog(err.Error)
+	}
+	TellChatFile, err = os.OpenFile(os.Getenv("goDiscCfgDir")+"tellChat.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		wlog(err.Error)
+	}
+
+	defer CLOGFile.Close()
+	defer WLOGFile.Close()
+	defer TellChatFile.Close()
+
+	msgchan := make(chan string)
+	conn, err := gotelnet.Dial(fmt.Sprintf("%s:%d", cHost, cPort))
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	connbuf := bufio.NewReader(conn)
+	go printMessages(msgchan, conn, &XP)
+	go readKeyboardInput(conn)
+	for {
+		str, _ := connbuf.ReadString('\n')
+		str = highLight(str)
+		msgchan <- str
+	}
+}
+func exists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return true, err
+}
+
 func RemoveDuplicates(xs *[]string) {
 	found := make(map[string]bool)
 	j := 0
@@ -169,6 +188,70 @@ func RemoveDuplicates(xs *[]string) {
 		}
 	}
 	*xs = (*xs)[:j]
+}
+
+func addTalkersToClubCache() {
+	talkers := []string{
+		"one",
+		"two",
+		"dead",
+		"Wizards",
+		"playtesters",
+		"Adventurers",
+		"playerkillers",
+		"Catfish",
+		"Warriors",
+		"A'Tuin",
+		"Apex",
+		"Priests",
+		"Thieves",
+		"Witches",
+		"Pishe",
+		"Ankh-MorporkCouncil",
+		"Ankh-MorporkCouncilMagistrate",
+		"HublandishBarbarians",
+		"igame",
+		"inews",
+		"Apex",
+		"Fish",
+		"Hat",
+		"Sek",
+		"Gufnork",
+		"Gapp",
+		"Sandelfon",
+		"ConlegiumSicariorum",
+		"Assassins",
+		"theAgateanEmpireCouncil",
+		"DjelibeybiCouncil",
+		"Hashishim",
+		"DjelibeybiCouncilMagistrate",
+		"Quiz",
+		"LancreHighlandRegiment",
+		"Ninjas",
+		"Witches",
+	}
+	for _, talker := range talkers {
+		log.Println("Saving", talker)
+		Clubs.Set(talker, nil, cache.NoExpiration)
+	}
+}
+
+func cacheClubNames() {
+	resp, err := soup.Get("http://discworld.starturtle.net/lpc/playing/clubs.c?type=club")
+	if err != nil {
+		os.Exit(1)
+	}
+	doc := soup.HTMLParse(resp)
+	list := doc.Find("div", "id", "content").Find("ul").FindAll("li")
+	for _, item := range list {
+		link := item.Find("a")
+		club := strings.Replace(link.Text(), " ", "_", -1)
+		club = strings.ToLower(club)
+		log.Println("Saving", link.Text())
+		log.Println("Saving", club)
+		Clubs.Set(link.Text(), nil, cache.NoExpiration)
+		Clubs.Set(club, nil, cache.NoExpiration)
+	}
 }
 
 func cacheHighlights() {
@@ -340,10 +423,9 @@ func readKeyboardInput(c net.Conn) {
 		str, err := linenoise.Line("")
 		wlog(str)
 		if err != nil {
-			if err == linenoise.ErrKillSignal {
-				quit()
+			if err != linenoise.ErrKillSignal {
+				fmt.Printf("Unexpected error: %s\n", err)
 			}
-			fmt.Printf("Unexpected error: %s\n", err)
 			quit()
 		}
 		inputText := strings.Fields(str)
@@ -384,7 +466,10 @@ func quit() {
 	os.Exit(0)
 }
 func regComp(str string, reg string) []string {
-	r := regexp.MustCompile(reg)
+	r, err := regexp.Compile(reg)
+	if err != nil {
+		fmt.Println("Could not compile regex", err)
+	}
 	res := r.FindStringSubmatch(str)
 	return res
 }
@@ -408,9 +493,9 @@ func clearTellSaver(str string) bool {
 			return true
 		}
 	}
-	ignoreNpcs := []string{"sailor", "seagull", "barman", "samurai", "tramp", "Mihk-gran-bohp", "engineer", "warrior", "pickpocket", "Khepresh", "smuggler", "citadel", "guard", "hopelite", "lady", "giant", "schoolboy", "farmer", "soldier", "ceremonial", "Kang Wu", "rickshaw driver", "Imperial guard", "Ryattenoki", "Kyakenko", "actor", "youth"}
+	ignoreNpcs := []string{"sailor", "Renee Palm", "The midnight hag", "deckhand", "Mr Werks", "Sister Rhelin", "Slim Stevie", "rogue", "nameless man", "obnoxious beggar", "silversmith", "urchin", "heavy", "Jones", "seagull", "barman", "samurai", "tramp", "Mihk-gran-bohp", "engineer", "warrior", "pickpocket", "Khepresh", "smuggler", "citadel", "guard", "hopelite", "hoplite", "poet", "lady", "giant", "schoolboy", "farmer", "soldier", "ceremonial", "Kang Wu", "rickshaw driver", "Imperial guard", "Ryattenoki", "Kyakenko", "actor", "youth"}
 	for _, v := range ignoreNpcs {
-		if strings.Contains(str, v) == true {
+		if strings.Contains(str, v) {
 			return true
 		}
 	}
@@ -445,25 +530,46 @@ func tellSaver(str string) bool {
 
 // chatSaver handles which strings to write to the talker history log.
 func chatSaver(str string) bool {
-	pattern := `\((.+)\)\s(.+:|.+ whisps|.+ )(.+)`
-	res := regComp(str, pattern)
-	if len(res) > 1 {
-		var stringToWrite string
-		t := time.Now()
-		stringToWrite = fmt.Sprintf("[ %d:%d:%d ] (%s) %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
-		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
-			wlog(err.Error)
+	for cl, _ := range Clubs.Items() {
+		if strings.Contains(str, fmt.Sprintf("(%s)", cl)) {
+			str = strings.Replace(str, ": ", " ", -1)
+			pattern := fmt.Sprintf(`(\(%s\)) ([a-zA-Z]+) (.+)`, cl)
+			res := regComp(str, pattern)
+			if len(res) > 2 {
+				var stringToWrite string
+				t := time.Now()
+				stringToWrite = fmt.Sprintf("[ %d:%d:%d ] %s %s %s", t.Hour(), t.Minute(), t.Second(), ansi.Color(res[1], "blue+b"), ansi.Color(res[2], "yellow+b"), ansi.Color(res[3], "green+b"))
+				if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
+					wlog(err.Error)
+				}
+				return true
+			}
 		}
-		return true
+	}
+	return false
+}
+
+func contains(s []string, e string) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
 	}
 	return false
 }
 
 // groupSaver handles which strings to write to the tell history log.
 func groupSaver(str string) bool {
-	res := regComp(str, "\\[(.+)\\]\\s(.+) (.+)")
+	res := regComp(str, "\\[(.+)\\](.+) (.+)")
 	if len(res) > 2 && len(res) < groupSaverMaxLength {
-		if len(res[1]) < 3 || strings.Contains(res[2], "no destination") {
+		if len(res[1]) < 3 || strings.Contains(res[0], "Ench 5") || strings.Contains(res[2], "no destination") || strings.Contains(res[2], "is mounted on") {
+			return false
+		}
+		if strings.Contains(res[1], "Discworld") || strings.Contains(res[0], "----------------------") || strings.Contains(res[2], "----------------------") {
+			return false
+		}
+		exclude := []string{"job", "from", "for", "here", "main", "quests", "all", "details", "none"}
+		if contains(exclude, res[1]) || contains(exclude, res[0]) {
 			return false
 		}
 		var stringToWrite string
@@ -477,51 +583,19 @@ func groupSaver(str string) bool {
 	return false
 }
 
-// rememberSaver handles which strings to write to the tell remember log.
-func rememberSaver(str string) bool {
-	res := regComp(str, "identified as \"(.+)\"")
-	if len(res) > 1 {
-		var stringToWrite string
-		stringToWrite = fmt.Sprintf("%s", ansi.Color(res[1], "magenta+b"))
-		f, err := os.OpenFile(os.Getenv("goDiscCfgDir")+"remember.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-		if err != nil {
-			wlog(err.Error)
-		}
-
-		defer f.Close()
-
-		if _, err := TellChatFile.WriteString(stringToWrite + "\n"); err != nil {
-			wlog(err.Error)
-		}
-		return true
-	}
-	return false
-}
-
 // printMessages listens on the msgchan and then filters the text. Everything not written to history files should be written to stdout.
 func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 	fmt.Printf("\n")
 	for msg := range msgchan {
-		if len(msg) > 1 {
+		if len(msg) < 1 {
+			fmt.Printf("%s", msg)
+		} else {
 			clog(msg)
 			// Parse msg to see if it should be written to a file instead of being printed.
 			ignoreChatPrint := chatSaver(msg)
 			ignoreTellPrint := tellSaver(msg)
 			ignoreGroupPrint := groupSaver(msg)
-			rememberSaver(msg)
-			if strings.Contains(msg, "letMeResetCounter") {
-				newXP := XPObj{
-					StartTS:          "",
-					StartXP:          0,
-					LastTS:           "",
-					LastXP:           0,
-					AverageXP:        0,
-					TotalXP:          0,
-					HighestAverageXP: 0,
-				}
-				XP = &newXP
-			}
-			if XP.AverageXP < 0 || XP.TotalXP < 0 {
+			if strings.Contains(msg, "letMeResetCounter") || XP.AverageXP < 0 || XP.TotalXP < 0 {
 				newXP := XPObj{
 					StartTS:          "",
 					StartXP:          0,
@@ -535,14 +609,9 @@ func printMessages(msgchan <-chan string, c net.Conn, XP *XPObj) {
 			}
 			XP = saveXp(msg, XP)
 			// If the three Print filters above are all false print msg to screen.
-			if ignoreChatPrint == false && ignoreTellPrint == false && ignoreGroupPrint == false {
-				if strings.Contains(msg, "There is a sudden white flash.  Your magical shield has broken.") == true {
-					msg = strings.Replace(msg, "There is a sudden white flash.  Your magical shield has broken.", ansi.Color("There is a sudden white flash.  Your magical shield has broken.", "red+bB"), -1)
-				}
+			if !ignoreChatPrint && !ignoreTellPrint && !ignoreGroupPrint {
 				fmt.Printf("%s", msg)
 			}
-		} else {
-			fmt.Printf("%s", msg)
 		}
 	}
 }
