@@ -33,8 +33,8 @@ type (
 )
 
 var (
-	cHost               string = "disctemp.starturtle.net"
-	cPort               int    = 4242
+	cHosts										[2]string{"discworld.starturtle.net","disctemp.starturtle.net"}
+	cPorts										[2]int{4242,23}
 	tellSaverMaxLength  int    = 35
 	groupSaverMaxLength int    = 35
 	CLOGFile            *os.File
@@ -152,11 +152,34 @@ func main() {
 	defer TellChatFile.Close()
 
 	msgchan := make(chan string)
-	conn, err := gotelnet.Dial(fmt.Sprintf("%s:%d", cHost, cPort))
+
+	//the intention of this code is to try all possible host/port combinations
+	//with priority for the first elements of each array, trying all ports on the
+	//highest priority host before checking the next host
+	//this is my first go at writing go, any fixes are appreciated
+	for _, host := range cHosts {
+		for _, port := range cPorts {
+			hostname := fmt.Sprintf("%s:%d", host, port)
+			conn, err := gotelnet.Dial(hostname)
+			if err != nil {
+				fmt.Println(fmt.Sprintf("Error connecting to %s. Retrying until we run out.",hostname))
+				fmt.Println(err)
+			}
+			else {
+				break
+			}
+		}
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
+		fmt.Println("We ran out of hosts. Here's the last error we encountered.")
 		fmt.Println(err)
 		os.Exit(1)
 	}
+	//end of connection code
+
 	connbuf := bufio.NewReader(conn)
 	go printMessages(msgchan, conn, &XP)
 	go readKeyboardInput(conn)
