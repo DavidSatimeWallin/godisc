@@ -30,13 +30,16 @@ type (
 		TotalXP          int
 		HighestAverageXP int
 	}
+	Connection struct {
+		Host string
+		Port int
+	}
 )
 
 var (
-	cHosts										[2]string{"discworld.starturtle.net","disctemp.starturtle.net"}
-	cPorts										[2]int{4242,23}
-	tellSaverMaxLength  int    = 35
-	groupSaverMaxLength int    = 35
+	connections         []Connection
+	tellSaverMaxLength  int = 35
+	groupSaverMaxLength int = 35
 	CLOGFile            *os.File
 	WLOGFile            *os.File
 	TellChatFile        *os.File
@@ -45,6 +48,8 @@ var (
 	C                   *cache.Cache
 	Clubs               *cache.Cache
 	ChatItems           string
+	conn                gotelnet.Conn
+	err                 error
 )
 
 const (
@@ -52,6 +57,18 @@ const (
 )
 
 func init() {
+
+	connections = []Connection{
+		Connection{
+			Host: "discworld.starturtle.net",
+			Port: 4242,
+		},
+		Connection{
+			Host: "disctemp.starturtle.net",
+			Port: 23,
+		},
+	}
+
 	usr, err := user.Current()
 	if err != nil {
 		log.Fatal(err)
@@ -153,32 +170,20 @@ func main() {
 
 	msgchan := make(chan string)
 
-	//the intention of this code is to try all possible host/port combinations
-	//with priority for the first elements of each array, trying all ports on the
-	//highest priority host before checking the next host
-	//this is my first go at writing go, any fixes are appreciated
-	for _, host := range cHosts {
-		for _, port := range cPorts {
-			hostname := fmt.Sprintf("%s:%d", host, port)
-			conn, err := gotelnet.Dial(hostname)
-			if err != nil {
-				fmt.Println(fmt.Sprintf("Error connecting to %s. Retrying until we run out.",hostname))
-				fmt.Println(err)
-			}
-			else {
-				break
-			}
+	for _, connection := range connections {
+		hostname := fmt.Sprintf("%s:%d", connection.Host, connection.Port)
+		log.Println("connecting to", hostname)
+		conn, err = gotelnet.Dial(hostname)
+		if err != nil {
+			log.Println("could not connect to", hostname, err)
+			continue
 		}
-		if err == nil {
-			break
-		}
+		break
 	}
 	if err != nil {
-		fmt.Println("We ran out of hosts. Here's the last error we encountered.")
-		fmt.Println(err)
+		fmt.Println("We ran out of hosts. Here's the last error we encountered.", err)
 		os.Exit(1)
 	}
-	//end of connection code
 
 	connbuf := bufio.NewReader(conn)
 	go printMessages(msgchan, conn, &XP)
