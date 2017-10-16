@@ -330,12 +330,16 @@ func findAlias(str []string) string {
 			}
 			if multipleInputVars {
 				for _, v := range str {
-					if v == ex[0] {
-						return ex[1]
+					v = strings.TrimSpace(v)
+					if len(v) >= len(ex[0]) {
+						if v[0:len(ex[0])] == ex[0] && len(ex) > 1 {
+							return ex[1]
+						}
 					}
 				}
 			} else {
-				if str[0] == ex[0] {
+				s := strings.TrimSpace(str[0])
+				if s[0:len(s)] == ex[0] {
 					return ex[1]
 				}
 			}
