@@ -64,6 +64,14 @@ func init() {
 			Port: 4242,
 		},
 		Connection{
+			Host: "discworld.starturtle.net",
+			Port: 23,
+		},
+		Connection{
+			Host: "disctemp.starturtle.net",
+			Port: 4242,
+		},
+		Connection{
 			Host: "disctemp.starturtle.net",
 			Port: 23,
 		},
