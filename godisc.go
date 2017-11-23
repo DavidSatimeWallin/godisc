@@ -17,7 +17,7 @@ import (
 	"github.com/mgutz/ansi"
 	cache "github.com/patrickmn/go-cache"
 	"github.com/stesla/gotelnet"
-	linenoise "pkg.re/essentialkaos/go-linenoise.v3"
+	linenoise "github.com/essentialkaos/go-linenoise/tree/v3.0.1"
 )
 
 type (

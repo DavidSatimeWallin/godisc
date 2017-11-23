@@ -4,6 +4,7 @@
 godisc
 godisc.log
 log
+
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 *.o
 *.a
@@ -29,3 +30,6 @@ _testmain.go
 *.test
 *.prof
 .idea/
+
+#I don't wanna talk about it
+MUSHclient.ini
