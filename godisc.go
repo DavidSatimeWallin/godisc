@@ -17,7 +17,7 @@ import (
 	"github.com/mgutz/ansi"
 	cache "github.com/patrickmn/go-cache"
 	"github.com/stesla/gotelnet"
-	linenoise "pkg.re/essentialkaos/go-linenoise.v3"
+	linenoise "github.com/essentialkaos/go-linenoise"
 )
 
 type (
@@ -61,6 +61,14 @@ func init() {
 	connections = []Connection{
 		Connection{
 			Host: "discworld.starturtle.net",
+			Port: 4242,
+		},
+		Connection{
+			Host: "discworld.starturtle.net",
+			Port: 23,
+		},
+		Connection{
+			Host: "disctemp.starturtle.net",
 			Port: 4242,
 		},
 		Connection{
