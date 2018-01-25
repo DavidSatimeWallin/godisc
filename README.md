@@ -27,10 +27,10 @@ You need to have tmux and Go installed!
 As seen in the [LICENSE file](https://github.com/dvwallin/godisc/blob/master/LICENSE) godisc is licensed under the MIT License.
 
 # Who built it
-David V. Wallin wrote godisc as a tiny fun hobby project.
+David Satime Wallin wrote godisc as a tiny fun hobby project.
 
 # Contact
-David V. Wallin can be reached on [twitter](https://twitter.com/dvwallin) or on email < david@dwall.in >
+David Satime Wallin can be reached on [twitter](https://twitter.com/satimewallin) or on email < david@dwall.in >
 
 # Issues and Bugs
 Any issues, bugs and requests can be posted [here](https://github.com/dvwallin/godisc/issues)
